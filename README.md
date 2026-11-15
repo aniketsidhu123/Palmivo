@@ -1,132 +1,214 @@
-# SignToAST
+# SignToAST — Spatial Gesture Compiler for Solid Modelling
 
-A local spatial CAD prototype: point and pinch to choose commands, move and scale solids with your hands, and compile each committed edit into a typed abstract syntax tree (AST).
+> Point, pinch, and shape — a local spatial CAD prototype that compiles hand gestures into a typed Abstract Syntax Tree (AST) for solid modelling operations.
 
-The recognition backend is **MediaPipe + temporal gesture rules**. The app implements real solid subtraction using Manifold WASM. ST-GCN, CTC, natural sign-language translation, facial grammar, and quantized ONNX inference are future work; they are not used by this release.
+![CAD Preview](docs/media/cad-preview.png)
 
-## Run the portable Windows release
+## ✨ Features
 
-1. Extract the entire `SignToAST` release folder. Keep `dist`, `scripts`, and `runtime` beside `start-demo.cmd`.
-2. Double-click `start-demo.cmd`. Keep its console window open.
-3. Open the printed address, normally **http://127.0.0.1:4173**, in a current Chrome or Edge browser.
-4. Wait for the local-asset check to complete. You can model immediately with mouse and keyboard.
-5. Choose **Enable camera**, allow camera access, and complete the calibration instructions for gesture control.
+- **Hand-gesture CAD control** — create, move, scale, and subtract 3D solids using pinch and open-palm gestures via webcam
+- **Typed AST compilation** — every committed edit produces a structured `CommandAST` (Create, Move, Scale, Subtract)
+- **Real Boolean geometry** — solid subtraction powered by [Manifold](https://github.com/elalish/manifold) WASM
+- **Dual input** — full mouse & keyboard support alongside gesture control
+- **Fully offline** — runs entirely on localhost with no cloud services, accounts, or remote inference
+- **Project persistence** — autosaves to IndexedDB with JSON export/import
 
-The packaged release includes a Node runtime. It does not install packages, contact a CDN, or download a model when launched. A localhost server remains necessary: opening `index.html` directly with `file://` will not work correctly with browser workers and camera permissions.
+## 🛠️ Tech Stack
 
-To stop the server, press **Ctrl+C** in the launcher console. If port 4173 is already occupied, close the earlier instance or set `SIGNTOAST_PORT` before starting. Browser storage belongs to the exact origin, so changing the port creates a separate local workspace.
+| Layer | Technology |
+| --- | --- |
+| Hand tracking | [MediaPipe Tasks Vision](https://developers.google.com/mediapipe) (local WASM inference) |
+| Geometry engine | [Manifold 3D](https://github.com/elalish/manifold) (CSG Boolean ops via WASM) |
+| 3D rendering | [Three.js](https://threejs.org/) |
+| Build tooling | [Vite](https://vite.dev/) + TypeScript |
+| Testing | [Vitest](https://vitest.dev/) |
+| Package manager | [pnpm](https://pnpm.io/) |
 
-## Build from source
+## 🚀 Quick Start
 
-Use Node **20.19+ or 22.12+** and pnpm. Internet access is needed for the first dependency and model preparation; subsequent runtime operation is local.
+### Prerequisites
 
-```powershell
+- **Node.js** 20.19+ or 22.12+ — [download](https://nodejs.org/)
+- **pnpm** — install via `npm install -g pnpm` or `corepack enable`
+- **Chrome or Edge** (current version)
+- **Webcam** (optional — needed only for gesture control)
+
+### Run from Source
+
+```bash
+# 1. Install dependencies
 pnpm install --frozen-lockfile
+
+# 2. Download hand model & bundle tracking assets
 pnpm assets
+
+# 3. Run tests
 pnpm test
+
+# 4. Build for production
 pnpm build
+
+# 5. Start the production server
 pnpm start
 ```
 
-`pnpm assets` bundles the tracking worker, copies the pinned MediaPipe WASM files, downloads the hand model if it is absent, and writes a SHA-256 asset manifest. Rerun it after changing tracking worker code or tracking dependencies. Do not mix WASM files from different MediaPipe versions.
+Open **http://127.0.0.1:4173** in your browser.
 
-For development, run `pnpm assets` once, then `pnpm dev`. The dev server address differs from the production server address; use the production build for the final offline test.
+### Development Mode
 
-Create the offline Windows release after a successful build:
+```bash
+pnpm install --frozen-lockfile
+pnpm assets            # only needed once (or after changing tracking code)
+pnpm dev               # starts Vite dev server with hot reload at :5173
+```
 
-```powershell
+### Run the Portable Windows Release
+
+1. Extract the entire `SignToAST` release folder (keep `dist/`, `scripts/`, and `runtime/` beside `start-demo.cmd`)
+2. Double-click **`start-demo.cmd`** — keep its console window open
+3. Open **http://127.0.0.1:4173** in Chrome or Edge
+
+> [!NOTE]
+> The packaged release includes a Node runtime. It does not install packages, contact a CDN, or download a model when launched. Opening `index.html` directly via `file://` will **not** work due to browser worker and camera permission restrictions.
+
+## 📁 Project Structure
+
+```
+SignToAST/
+├── src/
+│   ├── main.ts                  # App entry — input routing, wiring, autosave
+│   ├── metrics.ts               # Performance timing and diagnostics
+│   ├── recording.ts             # Demo video/snapshot capture
+│   ├── storage.ts               # IndexedDB persistence
+│   ├── core/
+│   │   ├── controller.ts        # Scene state, drafts, Commit/Cancel/Undo
+│   │   ├── presentation.ts      # Presentation layer
+│   │   ├── recovery.ts          # Error recovery
+│   │   └── validation.ts        # AST & scene validation
+│   ├── geometry/
+│   │   ├── GeometryClient.ts    # Geometry worker client
+│   │   ├── kernel.ts            # Manifold WASM kernel wrapper
+│   │   └── worker.ts            # Geometry web worker
+│   ├── tracking/
+│   │   ├── activation.ts        # Toolbar gesture activation
+│   │   ├── calibration.ts       # Hand calibration
+│   │   ├── client.ts            # Tracking worker client
+│   │   ├── gestures.ts          # Temporal gesture rules
+│   │   ├── manipulation.ts      # Move/Scale gesture handling
+│   │   └── worker.ts            # MediaPipe tracking web worker
+│   ├── ui/
+│   │   ├── feedback.ts          # Visual action feedback
+│   │   ├── viewport.ts          # Three.js viewport & picking
+│   │   ├── workspace.ts         # DOM workspace & controls
+│   │   └── *.css                # Styles
+│   ├── shared/
+│   │   └── types.ts             # Shared type definitions
+│   └── integration/
+│       └── demo.test.ts         # Integration tests
+├── scripts/
+│   ├── prepare-assets.mjs       # Bundle tracking worker & download model
+│   ├── serve.mjs                # Production static server
+│   ├── verify-assets.mjs        # SHA-256 asset verification
+│   └── package.mjs              # Offline release packager
+├── public/                      # Static assets (generated by `pnpm assets`)
+├── docs/                        # Architecture, demo guide, validation, roadmap
+├── examples/                    # Example project & AST command JSON
+├── qa/                          # Dev-only UI test page (not in production)
+├── index.html                   # App shell
+├── vite.config.ts               # Vite configuration
+├── vitest.config.ts             # Test configuration
+├── tsconfig.json                # TypeScript configuration
+└── package.json                 # Scripts & dependencies
+```
+
+## 🎮 Controls
+
+Every edit is a **preview** until you **Commit**. Releasing a pinch freezes the preview — it never auto-commits.
+
+| Action | Gesture | Mouse / Keyboard |
+| --- | --- | --- |
+| Box | Choose Box | **B** |
+| Cylinder | Choose Cylinder | **C** |
+| Select | Pinch over a solid or scene list entry | Click solid/list entry; **V** |
+| Move | Choose Move → pinch and drag | **M** → drag |
+| Scale | Choose Scale → pinch both hands → change separation | **S** → scroll wheel or **+** / **−** |
+| Subtract | Select target → choose Subtract → select cutter | **D** → click cutter |
+| Commit | Open other hand → hover Commit → fresh pinch | **Enter** |
+| Cancel draft | Open other hand → hover Cancel → fresh pinch | **Escape** |
+| Undo | Choose Undo | **Ctrl+Z** |
+| Pause / Resume | Choose Pause / Resume | **Space** |
+| Reset scene | Two activations within 3 seconds | Two clicks on Reset |
+
+> [!TIP]
+> Scale is clamped to **0.5–2.0×**. Move snaps to **1 mm** on the object's XY plane. Default box: 20 × 20 × 20 mm. Default cylinder: radius 5 mm, height 60 mm along Z.
+
+## 📷 Calibration & Camera Setup
+
+1. Use a **fixed frontal camera** with good diffuse lighting
+2. Keep **both hands fully visible** in frame
+3. Select your **pointer hand** (Right or Left) — the preview is mirrored
+4. Sweep your pointer hand over a comfortable area, perform **3 pinch/release cycles**, then open your other hand to arm the toolbar
+
+> [!IMPORTANT]
+> Calibration is saved to browser local storage. Recalibrating cancels any unfinished draft. If tracking is lost, show both hands, release pinches, and wait for stable tracking.
+
+### Tuning Gesture Controls
+
+Start with: **Pinch sensitivity → Easier**, **Button activation → Pinch**, **Hover stability → Relaxed (350 ms)**. Use the **Test click** button to verify 3 successful clicks before editing.
+
+For demo fallback, choose **Dwell assist** — hold over a button for 0.9s (1.2s for Commit) without needing a pinch.
+
+## 💾 Save & Export
+
+- **Export project** — downloads versioned JSON with solid recipes, transforms, and AST history
+- **Autosave** — committed scene is saved to IndexedDB automatically
+- **Record demo** — captures CAD canvas + AST as a local WebM video (no webcam/audio)
+- **Snapshot** — saves a PNG of the current CAD view
+- **Diagnostics export** — timing samples, camera/tracking counters, and backend info
+
+> [!NOTE]
+> Raw camera video is never recorded or uploaded. Camera access starts only when enabled. All inference runs locally.
+
+## 🧪 Testing
+
+```bash
+pnpm test              # run all tests once
+```
+
+Tests cover the controller, gesture rules, geometry kernel, calibration, viewport, activation, manipulation, UI feedback, and end-to-end integration.
+
+## 📦 Packaging an Offline Release
+
+```bash
+pnpm build
 pnpm package
 ```
 
-This creates `release/SignToAST`, including the production build, launcher, documentation, and the Node executable/runtime DLLs used to run the packaging script. It also creates `release/SignToAST-Source` with source code, lockfile, documentation, and prepared model assets, excluding dependency caches and build output. Build/package on Windows to produce the Windows launcher package. Ship the entire runtime output folder.
+Creates `release/SignToAST` (production build + Node runtime + launcher) and `release/SignToAST-Source` (source code + lockfile + model assets).
 
-## Controls
-
-Every edit is a preview until **Commit**. Releasing a pinch freezes the preview; it never commits it.
-
-| Action | Gesture | Mouse / keyboard |
-| --- | --- | --- |
-| Choose a tool | Open the other hand; hover the pointer over a tool, then freshly pinch | Click tool; shortcuts below |
-| Box | Choose Box | **B** |
-| Cylinder | Choose Cylinder | **C** |
-| Select | Pinch over a solid or an entry in the scene list | Click a solid/list entry; **V** selects the tool |
-| Move | Choose Move, pinch and drag in the viewport | **M**, then drag |
-| Scale | Choose Scale, pinch both hands, then change their separation | **S**, then wheel or **+ / −** |
-| Subtract | Choose target, choose Subtract, then select a different cutter | **D**, then click cutter |
-| Commit | Open other hand, hover Commit, then fresh pinch | **Enter** |
-| Cancel draft | Open other hand, hover Cancel, then fresh pinch | **Escape** |
-| Undo | Choose Undo | **Ctrl+Z** |
-| Pause / resume edits | Choose Pause / Resume | **Space** |
-| Reset scene | Use the reset control twice within three seconds | Two clicks on Reset workspace |
-
-Keyboard shortcuts are inactive while a form field has focus. Scale is limited to **0.5–2.0×**. Move is snapped to **1 mm** on the object's fixed-depth XY plane. Scene dimensions are illustrative CAD values; the webcam does not measure physical millimetres.
-
-Default primitives are a centered **20 × 20 × 20 mm box** and a centered **radius 5 mm, height 60 mm cylinder along Z**. The scene supports ten visible solids and twenty Undo snapshots. Undo snapshots are session-only; the committed project and command log are autosaved locally.
-
-## Calibration and presenter setup
-
-- Use a fixed frontal camera, good diffuse lighting, and both hands fully visible.
-- Select Right or Left as the pointer hand. The camera preview is mirrored.
-- Sweep your pointer hand over a comfortable area, perform three pinch/release cycles, and open your other hand to arm the toolbar.
-- Toolbar activation requires a stable open other hand, a short hover, and a fresh pinch. Dragging a held pinch onto Commit does not activate it.
-- If tracking is lost, the movement freezes. Show both hands, release pinches, and wait for stable tracking before continuing.
-
-Calibration is saved to local browser storage. Recalibration cancels an unfinished draft. It does not calibrate depth or create camera-angle invariance.
-
-## Tune unreliable button clicks
-
-Start with **Pinch sensitivity → Easier**, **Button activation → Pinch**, and **Hover stability → Relaxed (350 ms)** in Gesture controls. Open your other palm, aim at **Test click**, wait for the progress bar to fill, then pinch and hold briefly (about 0.2 seconds). Fully release before repeating. Three successful test clicks are a useful check before editing.
-
-The live display shows which hands are detected, the pointer's pinch ratio, the close/release thresholds, the current target, and the reason a button is not ready. The viewport also shows a compact copy of this feedback. If the cursor follows the wrong hand, change Pointer hand. If the other hand is blocking activation, straighten at least three fingers and spread its thumb from its index finger.
-
-Button targets are captured when the pinch begins, before temporal debouncing, so small closing movements do not discard the intended click. A held pinch still cannot activate a button entered later. Slight open-palm pose jitter has a short grace period; missing tracking never executes a click.
-
-For a demo fallback, choose **Dwell assist**. With both hands visible, keep the other palm open and the pointer thumb/index separated. Hold over a button for **0.9 seconds** (**1.2 seconds for Commit**). After activation, move off all buttons before choosing the next one. Two-hand pinching still controls Scale, and a pointer pinch still drags Move inside the viewport. Settings are saved locally.
-
-If guided calibration is preventing practice, **Use current mapping** exits the guide explicitly. You can test or recalibrate that mapping afterward. Dwell assist can also use the current mapping without requiring three pinch cycles.
-
-## Prototype 03 interaction polish
-
-- A compact input strip sits above the canvas. It leaves the model visible and shows operation-specific Scale/Move instructions instead of asking for an open palm during two-hand manipulation.
-- Accepted actions pulse their button and remain visible for 800 ms. Subtract clearly labels Target and Cutter and prompts Commit after cutter selection.
-- Scale filters hand separation over 70 ms, suppresses tiny changes, and freezes on the first observed finger opening. Brief tracking interruptions hold the preview and preserve its baseline; invalid samples never invent motion or commit a command.
-- Mesh transforms update immediately. Inspector preview text refreshes at most ten times per second; scene persistence and structural UI updates happen on actual state changes. Geometry, materials, selection outlines, and object-list buttons are reused during preview.
-- Mouse/keyboard recovery, Cancel, Undo, and saved-project restoration remain part of the same tested workflow. Failed restoration preserves the original local save until an explicit reset.
-
-The source-only `/qa/polish.html` page (served with `pnpm dev`) tests active/held UI feedback and stable resources with simulated states. It never accesses the webcam and is not part of the production application. The included pointer-demo recording predates Prototype 03; its command sequence is still the same.
-
-## Save and measure
-
-**Export project** downloads versioned project JSON with solid recipes, transforms, and committed AST history. IndexedDB also autosaves the current committed scene. Reloading rebuilds its meshes from those recipes. There is no arbitrary project/mesh import in this release.
-
-**Record demo** captures the CAD canvas and AST as a local WebM video. Click again to download it. It excludes webcam pixels and microphone audio. **Snapshot** saves a PNG of the current CAD view. An actual mouse/keyboard walkthrough is included at [docs/media/pointer-demo.webm](docs/media/pointer-demo.webm); use it as an interaction reference, not evidence of live gesture accuracy.
-
-The diagnostics export downloads measured sample counts and p50/p95 timings, camera/tracking counters, and the active tracking backend. Values are browser timings, not physical motion-to-display measurements. Rendering, hand inference, rules-to-draft work, and Boolean geometry are measured separately. See [validation status](docs/VALIDATION.md) before making performance claims.
-
-Raw camera video is not recorded or uploaded. Camera access starts only when enabled. Source assets and inference run locally; no account or cloud service is required.
-
-## Troubleshooting
+## 🔧 Troubleshooting
 
 | Symptom | Recovery |
 | --- | --- |
-| Local assets unavailable | Ensure the release is fully extracted; for source builds run `pnpm assets` and rebuild |
-| Camera permission denied | Allow the localhost site's camera permission in the browser, then enable the camera again |
-| Camera already in use | Close other camera applications and retry |
-| Tracking is slow | Improve lighting; close GPU-heavy apps; inspect actual tracking FPS and backend |
-| Cursor cannot reach controls | Recalibrate with a wider comfortable sweep; check pointer-hand setting |
-| Tool does not activate | Keep the other hand open; hover first; fully release, then pinch again |
-| Cutter is hard to select | Choose it in the scene list; the nearest viewport hit can obscure a smaller solid |
-| Subtraction returns an empty solid | Cancel or move/scale the cutter so some target material remains |
-| Geometry times out | The previous scene is preserved; retry after the worker restarts |
-| Autosave unavailable | Export the project before closing the tab |
-| Launcher reports Node missing | Use the complete packaged release with its `runtime` folder |
+| Local assets unavailable | Run `pnpm assets` and rebuild |
+| Camera permission denied | Allow camera in browser settings → re-enable |
+| Camera already in use | Close other camera apps and retry |
+| Tracking is slow | Improve lighting; close GPU-heavy apps |
+| Cursor can't reach controls | Recalibrate with a wider sweep |
+| Tool won't activate | Keep other hand open; hover first; release then pinch |
+| Subtraction returns empty solid | Move/scale the cutter so target material remains |
+| Geometry times out | Previous scene preserved; retry after worker restarts |
+| Port 4173 in use | Close the other instance or set `SIGNTOAST_PORT=<port>` |
 
-## Project guide
+## 📖 Documentation
 
-- [Architecture and interfaces](docs/ARCHITECTURE.md)
-- [Presenter rehearsal and demo script](docs/DEMO_GUIDE.md)
-- [Validation status and acceptance procedure](docs/VALIDATION.md)
-- [ST-GCN + CTC roadmap](docs/ROADMAP.md)
-- [Example project](examples/through-hole-project.json) and [example AST request](examples/subtract-command.json)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
+- [Architecture & Interfaces](docs/ARCHITECTURE.md)
+- [Demo Guide & Presenter Script](docs/DEMO_GUIDE.md)
+- [Validation Status](docs/VALIDATION.md)
+- [ST-GCN + CTC Roadmap](docs/ROADMAP.md)
+- [Example Project](examples/through-hole-project.json) & [Example AST Command](examples/subtract-command.json)
+- [Third-Party Notices](THIRD_PARTY_NOTICES.md)
 
+## 📄 License
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party component licenses (MediaPipe: Apache-2.0, Manifold: Apache-2.0, Three.js: MIT).
