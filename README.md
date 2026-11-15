@@ -2,6 +2,8 @@
 
 > Point, pinch, and shape — a local spatial CAD prototype that compiles hand gestures into a typed Abstract Syntax Tree (AST) for solid modelling operations.
 
+Prototype 04 adds precise creation presets and reopening exported projects. The release scope is focused on the **November 16, 2026 evening submission**; learned recognition and broader CAD tools remain later work.
+
 ![CAD Preview](docs/media/cad-preview.png)
 
 ## ✨ Features
@@ -10,8 +12,9 @@
 - **Typed AST compilation** — every committed edit produces a structured `CommandAST` (Create, Move, Scale, Subtract)
 - **Real Boolean geometry** — solid subtraction powered by [Manifold](https://github.com/elalish/manifold) WASM
 - **Dual input** — full mouse & keyboard support alongside gesture control
+- **Precise creation sizes** — independently choose Box X/Y/Z sizes and Cylinder radius/height presets before Commit; the Create AST retains the exact dimensions
 - **Fully offline** — runs entirely on localhost with no cloud services, accounts, or remote inference
-- **Project persistence** — autosaves to IndexedDB with JSON export/import
+- **Project persistence** — autosaves to IndexedDB; export and reopen validated SignToAST project JSON, including its recipes, transforms, and committed AST history
 
 ## 🛠️ Tech Stack
 
@@ -82,6 +85,8 @@ SignToAST/
 │   ├── storage.ts               # IndexedDB persistence
 │   ├── core/
 │   │   ├── controller.ts        # Scene state, drafts, Commit/Cancel/Undo
+│   │   ├── presets.ts           # Precise creation size allowlist
+│   │   ├── projectFile.ts       # Local project JSON parsing
 │   │   ├── presentation.ts      # Presentation layer
 │   │   ├── recovery.ts          # Error recovery
 │   │   └── validation.ts        # AST & scene validation
@@ -129,6 +134,7 @@ Every edit is a **preview** until you **Commit**. Releasing a pinch freezes the 
 | --- | --- | --- |
 | Box | Choose Box | **B** |
 | Cylinder | Choose Cylinder | **C** |
+| Precise size | During a Box/Cylinder preview, activate a size preset | Click the size preset before Commit |
 | Select | Pinch over a solid or scene list entry | Click solid/list entry; **V** |
 | Move | Choose Move → pinch and drag | **M** → drag |
 | Scale | Choose Scale → pinch both hands → change separation | **S** → scroll wheel or **+** / **−** |
@@ -141,6 +147,18 @@ Every edit is a **preview** until you **Commit**. Releasing a pinch freezes the 
 
 > [!TIP]
 > Scale is clamped to **0.5–2.0×**. Move snaps to **1 mm** on the object's XY plane. Default box: 20 × 20 × 20 mm. Default cylinder: radius 5 mm, height 60 mm along Z.
+
+### Precise Size Presets
+
+Choose **Box** or **Cylinder**, then use the **Precise size** panel in the command inspector. Each choice updates the preview and draft AST; **Commit** creates the solid and **Cancel** discards the preview. Preset buttons use the same pinch or Dwell assist activation as the other CAD controls.
+
+| Primitive | Independent fields | Available sizes |
+| --- | --- | --- |
+| Box | X, Y, Z | 20, 30, or 40 mm for each axis |
+| Cylinder | Radius | 3, 5, or 8 mm |
+| Cylinder | Height along Z | 20, 40, or 60 mm |
+
+These are exact base dimensions in illustrative millimetres. Uniform scale remains a separate transform: a 20 × 30 × 40 mm box at 1.4× has final dimensions of 28 × 42 × 56 mm. Webcam movements do not measure physical dimensions. Defaults stay unchanged for the rehearsed demo.
 
 ## 📷 Calibration & Camera Setup
 
@@ -158,13 +176,25 @@ Start with: **Pinch sensitivity → Easier**, **Button activation → Pinch**, *
 
 For demo fallback, choose **Dwell assist** — hold over a button for 0.9s (1.2s for Commit) without needing a pinch.
 
-## 💾 Save & Export
+## 💾 Save, Reopen & Export
 
 - **Export project** — downloads versioned JSON with solid recipes, transforms, and AST history
 - **Autosave** — committed scene is saved to IndexedDB automatically
+- **Open project** — reopens a locally exported version 1 SignToAST JSON file, up to **8 MiB**; no camera is required
 - **Record demo** — captures CAD canvas + AST as a local WebM video (no webcam/audio)
 - **Snapshot** — saves a PNG of the current CAD view
 - **Diagnostics export** — timing samples, camera/tracking counters, and backend info
+
+To reopen a project:
+
+1. **Commit** or **Cancel** any current draft. Opening is unavailable during a draft or geometry execution.
+2. Click **Open project** with the mouse and choose the exported `.json` file in the normal system file picker.
+3. Review the filename and solid/command counts. Choose **Open saved project** to replace the workspace, or **Keep current scene** / **Escape** to cancel. Export the current project first if you want to keep a separate copy.
+4. The app rebuilds solid geometry from the saved recipes, restores transforms and committed AST history, and autosaves the opened scene locally. Camera calibration stays unchanged.
+
+Gesture editing is suspended while the file picker and replacement review are open. Invalid files, cancelled opening, or geometry failures preserve the current committed scene. Only the supported SignToAST project format can be reopened; this is not a mesh or CAD-script importer.
+
+The exported command log is retained for inspection. Undo snapshots are session-local: after opening, **Undo** applies to new edits made in that session and cannot step through edits from before the file was opened.
 
 > [!NOTE]
 > Raw camera video is never recorded or uploaded. Camera access starts only when enabled. All inference runs locally.
@@ -175,7 +205,7 @@ For demo fallback, choose **Dwell assist** — hold over a button for 0.9s (1.2s
 pnpm test              # run all tests once
 ```
 
-Tests cover the controller, gesture rules, geometry kernel, calibration, viewport, activation, manipulation, UI feedback, and end-to-end integration.
+Tests cover the controller, precise size presets, project parsing and replacement failure recovery, gesture rules, geometry kernel, calibration, viewport, activation, manipulation, UI feedback, and end-to-end integration. See [Validation Status](docs/VALIDATION.md) for measured results and the distinction between simulated gesture tests and camera rehearsals.
 
 ## 📦 Packaging an Offline Release
 
@@ -198,6 +228,8 @@ Creates `release/SignToAST` (production build + Node runtime + launcher) and `re
 | Tool won't activate | Keep other hand open; hover first; release then pinch |
 | Subtraction returns empty solid | Move/scale the cutter so target material remains |
 | Geometry times out | Previous scene preserved; retry after worker restarts |
+| Open project is unavailable | Finish or Cancel the draft; wait for geometry execution to finish |
+| Project file is rejected | Choose an exported version 1 SignToAST JSON file no larger than 8 MiB; the current scene is preserved |
 | Port 4173 in use | Close the other instance or set `SIGNTOAST_PORT=<port>` |
 
 ## 📖 Documentation

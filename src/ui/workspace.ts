@@ -1,8 +1,10 @@
 import type { ControllerState, Draft, Tool } from '../shared/types';
+import { SIZE_PRESETS } from '../core/presets';
 import { CONFIRMATION_DURATION_MS, manipulationInstruction, resolveInstruction, type ManipulationFeedback } from './feedback';
 import './style.css';
 import './responsive.css';
 import './gesture-controls.css';
+import './features.css';
 
 const icons: Record<string, string> = {
   box: '<path d="m12 3 9 5v8l-9 5-9-5V8zM3 8l9 5 9-5M12 13v8M7.5 5.5l9 5"/>',
@@ -17,6 +19,7 @@ const icons: Record<string, string> = {
   pause: '<path d="M8 5v14M16 5v14"/>',
   camera: '<rect x="3" y="5" width="18" height="15" rx="3"/><circle cx="12" cy="12.5" r="4"/><path d="m8 5 1-2h6l1 2"/>',
   export: '<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',
+  open: '<path d="M3 19V5h7l2 3h9v11z"/><path d="M3 11h18"/>',
   reset: '<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/>',
   hand: '<path d="M7 13V6a2 2 0 0 1 4 0v6-8a2 2 0 0 1 4 0v8-6a2 2 0 0 1 4 0v10c0 5-3 7-7 7-3 0-4-1-6-4l-3-5a2 2 0 0 1 3-2l3 3"/>',
   arrow: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
@@ -26,12 +29,16 @@ export const icon = (name: string, className = '') => `<svg class="icon ${classN
 
 export interface WorkspaceUI {
   paletteButtons: Map<Tool, HTMLButtonElement>;
+  sizePresetButtons: Map<string, HTMLButtonElement>;
   viewportHost: HTMLElement;
   video: HTMLVideoElement;
   handCanvas: HTMLCanvasElement;
   cameraButton: HTMLButtonElement;
   calibrateButton: HTMLButtonElement;
   exportButton: HTMLButtonElement;
+  openProjectButton: HTMLButtonElement;
+  projectFileInput: HTMLInputElement;
+  reviewProject(filename: string, solids: number, commands: number): Promise<boolean>;
   resetButton: HTMLButtonElement;
   metricsExportButton: HTMLButtonElement;
   dominantHandSelect: HTMLSelectElement;
@@ -67,8 +74,8 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   root.innerHTML = `
     <header class="app-header">
       <a class="brand" href="#" aria-label="SignToAST workspace"><span class="brand-mark"><i></i><i></i><i></i></span><span>sign<span class="brand-to">to</span>ast<span class="brand-period">.</span></span></a>
-      <div class="header-context"><span class="header-divider"></span><span>SPATIAL COMPILER</span><span class="version-tag">PROTOTYPE / 03</span></div>
-      <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>All computation stays here</span><button id="export-project" class="quiet-button">${icon('export')}<span>Export project</span></button></div>
+      <div class="header-context"><span class="header-divider"></span><span>SPATIAL COMPILER</span><span class="version-tag">PROTOTYPE / 04</span></div>
+      <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>All computation stays here</span><button id="open-project" class="quiet-button" title="Reopen a SignToAST project JSON">${icon('open')}<span>Open project</span></button><button id="export-project" class="quiet-button">${icon('export')}<span>Export project</span></button><input id="project-file" type="file" accept=".json,application/json" aria-label="Open SignToAST project JSON" hidden></div>
     </header>
     <main class="workspace">
       <section class="workspace-heading"><div><div class="eyebrow">CONTINUOUS INPUT. STRUCTURED OUTPUT.</div><h1>Give your ideas shape<span>.</span></h1></div><div class="readiness" id="assets-status"><span class="readiness-icon">↻</span><div><strong>Preparing local assets</strong><span>Checking geometry & tracking runtime</span></div></div></section>
@@ -112,7 +119,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
       </div>
       <footer class="diagnostics"><div class="diagnostic-label"><span class="status-dot"></span>LIVE DIAGNOSTICS</div><div class="metric"><span>CAMERA</span><strong data-metric="camera">— fps</strong></div><div class="metric"><span>TRACKING</span><strong data-metric="tracking">— fps</strong></div><div class="metric"><span>RENDER</span><strong data-metric="render">— fps</strong></div><div class="metric"><span>LANDMARKS</span><strong data-metric="landmark">— ms</strong></div><div class="metric"><span>RULES → AST</span><strong data-metric="compiler">— ms</strong></div><div class="metric"><span>GEOMETRY</span><strong data-metric="geometry">— ms</strong></div><button id="metrics-export" title="Export measured performance" aria-label="Export measured performance">${icon('export')}</button></footer>
       <div class="page-footnote"><span>Spatial gesture prototype. Scene dimensions are illustrative, not physical measurements.</span><span>COMPILE SOMETHING TANGIBLE.</span></div>
-    </main><div id="gesture-cursor" class="gesture-cursor" hidden><span></span></div>`;
+    </main><div id="gesture-cursor" class="gesture-cursor" hidden><span></span></div><dialog id="project-review" class="project-review" aria-labelledby="project-review-title" aria-describedby="project-review-description"><form method="dialog"><div class="eyebrow">LOCAL PROJECT</div><h2 id="project-review-title">Replace this workspace?</h2><p id="project-review-description">Opening a project replaces the current scene. Export your current project first if you want to keep it.</p><div class="project-review-file"><strong id="project-review-filename"></strong><span id="project-review-summary"></span></div><p class="project-review-note">Only the saved geometry and command history are restored. Your hand calibration stays the same.</p><div class="project-review-actions"><button value="cancel" class="cancel-button" autofocus>Keep current scene</button><button value="replace" class="commit-button">Open saved project</button></div></form></dialog>`;
 
   const references = new Map<string, HTMLElement>();
   const q = <T extends HTMLElement>(selector: string): T => {
@@ -123,6 +130,35 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   const text = (element: HTMLElement, value: string) => { if (element.textContent !== value) element.textContent = value; };
   const paletteButtons = new Map<Tool, HTMLButtonElement>();
   root.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach(button => paletteButtons.set(button.dataset.tool as Tool, button));
+  const sizePresetButtons = new Map<string, HTMLButtonElement>();
+  const presetsPanel = document.createElement('section');
+  presetsPanel.className = 'size-presets'; presetsPanel.hidden = true;
+  presetsPanel.setAttribute('aria-label', 'Precise creation sizes');
+  presetsPanel.innerHTML = `<div class="section-heading"><h3>Precise size</h3><span>mm</span></div><div id="preset-dimensions" class="preset-dimensions"></div>`;
+  for (const primitive of ['Box', 'Cylinder'] as const) {
+    const group = document.createElement('div');
+    group.className = 'preset-group'; group.dataset.primitive = primitive; group.hidden = true;
+    const fields = primitive === 'Box' ? ['x', 'y', 'z'] : ['radius', 'height'];
+    for (const field of fields) {
+      const row = document.createElement('div'); row.className = 'preset-row';
+      const label = document.createElement('span'); label.className = 'preset-field';
+      label.textContent = field.length === 1 ? field.toUpperCase() : field === 'radius' ? 'Radius' : 'Height';
+      row.append(label);
+      for (const preset of SIZE_PRESETS.filter(p => p.primitive === primitive && p.field === field)) {
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'size-preset'; button.dataset.sizePreset = preset.key;
+        button.textContent = String(preset.value); button.setAttribute('aria-label', `${primitive} ${preset.label}`);
+        button.setAttribute('aria-pressed', 'false'); button.title = `${preset.label} · exact size before uniform scaling`;
+        row.append(button); sizePresetButtons.set(preset.key, button);
+      }
+      group.append(row);
+    }
+    presetsPanel.append(group);
+  }
+  q('.selected-panel').after(presetsPanel);
+  const reviewDialog = q<HTMLDialogElement>('#project-review');
+  let finishReview: ((approved: boolean) => void) | null = null;
+  reviewDialog.addEventListener('close', () => { const finish = finishReview; finishReview = null; finish?.(reviewDialog.returnValue === 'replace'); });
   const video = q<HTMLVideoElement>('#camera');
   const cameraButton = q<HTMLButtonElement>('#camera-button');
   const hud = document.createElement('div');
@@ -149,6 +185,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   const baseInstruction = (): string => {
     const state = currentState;
     if (!state) return 'Choose a primitive to begin.';
+    if (state.draft?.kind === 'create') return 'Choose exact sizes below, then Commit to create your solid. Cancel discards the preview.';
     if (state.draft?.kind === 'subtract') {
       const draft = state.draft;
       const target = state.scene.solids.find(s => s.id === draft.targetId)?.name ?? draft.targetId;
@@ -168,7 +205,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     q('.instruction-card').classList.toggle('has-confirmation', primary.confirmed);
     hud.classList.toggle('has-confirmation', primary.confirmed);
     const hint = q('.gesture-hint');
-    hint.hidden = !!context;
+    hint.hidden = !!context || currentState?.draft?.kind === 'create';
   };
   const updatePreviewFields = (state: ControllerState) => {
     currentState = state;
@@ -194,14 +231,40 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     }
     const pause = paletteButtons.get('pause')!;
     text(pause.querySelector<HTMLElement>('span')!, state.paused ? 'Resume' : 'Pause');
+    const open = q<HTMLButtonElement>('#open-project');
+    open.disabled = state.busy || !!state.draft;
+    open.title = state.busy ? 'Wait for the current geometry operation to finish' : state.draft ? 'Commit or Cancel the current draft before opening a project' : 'Reopen a SignToAST project JSON';
+    const create = state.draft?.kind === 'create' ? state.draft : null;
+    presetsPanel.hidden = !create;
+    q('.inspector').classList.toggle('is-create-draft', !!create);
+    for (const group of presetsPanel.querySelectorAll<HTMLElement>('.preset-group')) group.hidden = !create || group.dataset.primitive?.toLowerCase() !== create.solid.recipe.kind;
+    const recipe = create?.solid.recipe;
+    for (const preset of SIZE_PRESETS) {
+      const button = sizePresetButtons.get(preset.key)!;
+      const activeValue = recipe?.kind === 'box' && preset.primitive === 'Box' ? recipe.dimensions[preset.field === 'x' ? 0 : preset.field === 'y' ? 1 : 2]
+        : recipe?.kind === 'cylinder' && preset.primitive === 'Cylinder' ? recipe[preset.field] : undefined;
+      const pressed = String(activeValue === preset.value);
+      if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed', pressed);
+      button.disabled = !create || state.busy || state.paused;
+    }
+    text(q('#preset-dimensions'), recipe?.kind === 'box' ? `${recipe.dimensions.join(' × ')} mm` : recipe?.kind === 'cylinder' ? `R ${recipe.radius} × H ${recipe.height} mm` : '');
   };
 
   return {
-    paletteButtons,
+    paletteButtons, sizePresetButtons,
     viewportHost: q('#viewport'), video,
     handCanvas: q<HTMLCanvasElement>('#hand-overlay'), cameraButton,
     calibrateButton: q<HTMLButtonElement>('#calibrate-button'),
     exportButton: q<HTMLButtonElement>('#export-project'),
+    openProjectButton: q<HTMLButtonElement>('#open-project'),
+    projectFileInput: q<HTMLInputElement>('#project-file'),
+    reviewProject(filename, solids, commands) {
+      if (reviewDialog.open || finishReview) return Promise.resolve(false);
+      text(q('#project-review-filename'), filename);
+      text(q('#project-review-summary'), `${solids} solid${solids === 1 ? '' : 's'} · ${commands} saved command${commands === 1 ? '' : 's'}`);
+      reviewDialog.returnValue = 'cancel';
+      return new Promise<boolean>(resolve => { finishReview = resolve; reviewDialog.showModal(); });
+    },
     resetButton: q<HTMLButtonElement>('#reset-scene'),
     metricsExportButton: q<HTMLButtonElement>('#metrics-export'),
     dominantHandSelect: q<HTMLSelectElement>('#dominant-hand'),
@@ -248,6 +311,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
       text(q('.selected-panel .section-heading h3'), subtract ? 'Boolean operands' : 'Selected solid');
       text(q('#selected-name'), subtract ? `Target: ${target?.name ?? '—'}` : selected?.name ?? 'Nothing selected');
       text(q('#selected-type'), subtract ? 'TARGET − CUTTER' : selected?.recipe.kind.toUpperCase() ?? '—');
+      q('.selected-panel').hidden = state.draft?.kind === 'create';
       q('.property-grid').hidden = !!subtract;
       booleanSummary.hidden = !subtract;
       text(booleanSummary, subtract ? `Cutter: ${cutter?.name ?? 'Choose a different solid'}` : '');

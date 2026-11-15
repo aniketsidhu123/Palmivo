@@ -4,14 +4,14 @@ import { CADViewport } from './viewport';
 import type { ControllerState, GeometryMesh, Solid } from '../shared/types';
 
 type Entry = { mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>; source: GeometryMesh | null; recipe: Solid['recipe'] };
-type Internals = { solids: Map<string, Entry>; solidGroup: THREE.Group; scene: THREE.Scene; outline: THREE.BoxHelper | null; outlinedMesh: THREE.Object3D | null };
+type Internals = { solids: Map<string, Entry>; solidGroup: THREE.Group; scene: THREE.Scene; outline: THREE.BoxHelper | null; outlinedMesh: THREE.Object3D | null; floor: THREE.Object3D; grid: THREE.Object3D };
 
 // Exercise real scene/geometry/material behavior without constructing a WebGL renderer.
 // Renderer allocation, camera capture, and visual output remain browser-QA responsibilities.
 function viewportHarness() {
   const view = Object.create(CADViewport.prototype) as CADViewport;
   const solidGroup = new THREE.Group(), scene = new THREE.Scene(); scene.add(solidGroup);
-  Object.assign(view, { solids: new Map(), solidGroup, scene, outline: null, outlinedMesh: null, state: null, disposed: false, diagnostics: { structuralUpdates: 0, previewUpdates: 0, outlineCreations: 0, geometryCreations: 0 } });
+  Object.assign(view, { solids: new Map(), solidGroup, scene, floor: new THREE.Object3D(), grid: new THREE.Object3D(), outline: null, outlinedMesh: null, state: null, disposed: false, diagnostics: { structuralUpdates: 0, previewUpdates: 0, outlineCreations: 0, geometryCreations: 0 } });
   return { view, internal: view as unknown as Internals };
 }
 function geometrySource(): GeometryMesh {
@@ -32,6 +32,29 @@ function fixture() {
 function outlineX(outline: THREE.BoxHelper): number[] { return Array.from(outline.geometry.getAttribute('position').array).filter((_, index) => index % 3 === 0); }
 
 describe('allocation-bounded CAD preview updates', () => {
+  it('rebuilds changed creation dimensions and keeps large or moved solids above the decorative floor', () => {
+    const { view, internal } = viewportHarness();
+    const { state } = fixture();
+    state.scene.solids = [];
+    const solid: Solid = { id: 'draft', name: 'Box', recipe: { kind: 'box', dimensions: [20,20,20] }, position: [0,0,0], scale: 1, color: '#b8d7b3' };
+    state.draft = { kind: 'create', solid };
+    view.update(state, new Map());
+    const oldGeometry = internal.solids.get(solid.id)!.mesh.geometry;
+    const dispose = vi.spyOn(oldGeometry, 'dispose');
+    state.draft = { kind: 'create', solid: { ...solid, recipe: { kind: 'box', dimensions: [20,40,30] } } };
+    view.update(state, new Map());
+    const mesh = internal.solids.get(solid.id)!.mesh;
+    expect(mesh.geometry.boundingBox!.getSize(new THREE.Vector3()).toArray()).toEqual([20,40,30]);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(internal.floor.position.y).toBe(-21);
+    state.draft = { kind: 'scale', targetId: solid.id, uniformScale: 2 };
+    view.updatePreview(state);
+    expect(internal.floor.position.y).toBe(-41);
+    expect(internal.grid.position.y).toBeCloseTo(-40.98);
+    state.draft = { kind: 'move', targetId: solid.id, position: [0,-50,0] };
+    view.updatePreview(state);
+    expect(internal.floor.position.y).toBe(-91);
+  });
   it('updates only the moving solid and reuses geometry, material, and outline for 100 samples', () => {
     const { state, meshes, view, internal } = fixture();
     state.draft = { kind: 'move', targetId: 'box-a', position: [0, 0, 0] }; view.update(state, meshes);

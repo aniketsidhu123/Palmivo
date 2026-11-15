@@ -9,6 +9,8 @@ import { ScaleSession } from './tracking/manipulation';
 import { TRACKING_GAP_MS } from './tracking/gestures';
 import { PresentationCoordinator } from './core/presentation';
 import { recoverProject } from './core/recovery';
+import { getSizePreset } from './core/presets';
+import { MAX_PROJECT_FILE_BYTES, parseProjectFile } from './core/projectFile';
 import { createUI } from './ui/workspace';
 import { CADViewport } from './ui/viewport';
 import { loadProject, saveProject } from './storage';
@@ -70,6 +72,8 @@ let gesturePaused = false;
 let assetReady = false;
 let persistenceReady = false;
 let initialized = false;
+let projectOpening = false;
+let projectPicking = false;
 ui.resetButton.disabled = true;
 const useMappingButton = document.createElement('button');
 useMappingButton.className = 'outline-button'; useMappingButton.id = 'use-current-mapping'; useMappingButton.textContent = 'Use current mapping'; useMappingButton.hidden = true;
@@ -80,7 +84,7 @@ useMappingButton.addEventListener('click', () => {
 });
 
 const presentation = new PresentationCoordinator({
-  full: state => { ui.update({ ...state, busy: state.busy || !initialized }); viewport.update(state, controller.meshes); },
+  full: state => { ui.update({ ...state, busy: state.busy || !initialized || projectOpening || projectPicking }); viewport.update(state, controller.meshes); },
   renderPreview: state => viewport.updatePreview(state),
   preview: state => ui.updatePreview(state),
   persist: scene => { void saveProject(scene).catch(() => ui.setStatus('Local autosave unavailable. Export your project before closing.')); },
@@ -95,6 +99,7 @@ controller.subscribe(state => {
 });
 
 async function runTool(tool: Tool, source: 'pointer' | 'gesture-rules' | 'keyboard' = 'pointer') {
+  if (projectOpening || projectPicking) return;
   if (!initialized) { ui.setStatus('Preparing local engines and restoring the saved scene. Please wait.'); return; }
   if (calibration && source === 'gesture-rules') return;
   const beforeDraft = controller.state.draft;
@@ -128,7 +133,7 @@ async function runTool(tool: Tool, source: 'pointer' | 'gesture-rules' | 'keyboa
 for (const [tool, button] of ui.paletteButtons) button.addEventListener('click', () => void runTool(tool));
 
 function selectSolid(id: string, button: HTMLButtonElement | null = null) {
-  if (controller.state.busy || controller.state.paused) return;
+  if (projectOpening || projectPicking || controller.state.busy || controller.state.paused) return;
   const solid = controller.state.scene.solids.find(item => item.id === id); if (!solid) return;
   if (controller.state.draft?.kind === 'subtract') {
     const previousCutter = controller.state.draft.cutterId;
@@ -137,9 +142,20 @@ function selectSolid(id: string, button: HTMLButtonElement | null = null) {
   } else if (!controller.state.draft) { controller.select(id); ui.confirmAction(`${solid.name} selected.`, button); }
 }
 document.querySelector('#app')!.addEventListener('click', event => {
+  const presetButton = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-size-preset]');
+  if (presetButton?.dataset.sizePreset && !presetButton.disabled) chooseSizePreset(presetButton.dataset.sizePreset, 'pointer');
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-solid-id]');
   if (button?.dataset.solidId && !button.disabled) selectSolid(button.dataset.solidId, button);
 });
+
+function chooseSizePreset(key: string, source: 'pointer' | 'gesture-rules') {
+  if (projectOpening || projectPicking || !initialized) return;
+  if (source !== 'gesture-rules') resetActivation();
+  if (controller.applySizePreset(key)) {
+    const preset = getSizePreset(key)!;
+    ui.confirmAction(`${preset.primitive}: ${preset.label}. Preview updated; choose Commit.`, ui.sizePresetButtons.get(key));
+  }
+}
 
 function beginMove(x: number, y: number, source: 'pointer' | 'gesture' = 'gesture') {
   const draft = controller.state.draft;
@@ -156,7 +172,7 @@ function inViewport(x: number, y: number): boolean {
   const r = ui.viewportHost.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 }
 ui.viewportHost.addEventListener('pointerdown', event => {
-  if (event.button !== 0 || controller.state.busy || controller.state.paused) return;
+  if (event.button !== 0 || projectOpening || projectPicking || controller.state.busy || controller.state.paused) return;
   const hit = viewport.pick(event.clientX, event.clientY);
   if (controller.state.draft?.kind === 'move') { beginMove(event.clientX, event.clientY, 'pointer'); ui.viewportHost.setPointerCapture(event.pointerId); }
   else if (hit) selectSolid(hit);
@@ -165,6 +181,7 @@ ui.viewportHost.addEventListener('pointermove', event => { if (event.buttons & 1
 ui.viewportHost.addEventListener('pointerup', () => { moving = null; movePhase = 'held'; presentManipulation(); });
 ui.viewportHost.addEventListener('pointercancel', () => { moving = null; movePhase = 'held'; presentManipulation(); });
 function manualScale(value: number) {
+  if (projectOpening || projectPicking) return;
   controller.updateScale(value);
   if (controller.state.draft?.kind === 'scale') scaling?.reset(controller.state.draft.uniformScale);
 }
@@ -174,6 +191,7 @@ ui.viewportHost.addEventListener('wheel', event => {
 }, { passive: false });
 
 document.addEventListener('keydown', event => {
+  if (projectOpening || projectPicking) return;
   if ((event.target as HTMLElement).matches('input, select, textarea') || event.repeat) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); void runTool('undo', 'keyboard'); return; }
   const keys: Record<string, Tool> = { b: 'box', c: 'cylinder', v: 'select', m: 'move', s: 'scale', d: 'subtract', Escape: 'cancel', Enter: 'commit', ' ': 'pause' };
@@ -199,17 +217,19 @@ function resetActivation() {
 }
 function buttonId(button: HTMLButtonElement): string | null {
   if (button === ui.testGestureButton) return 'test:click';
+  if (button.dataset.sizePreset) return `preset:${button.dataset.sizePreset}`;
   const tool = [...ui.paletteButtons].find(([, element]) => element === button)?.[0];
   return tool ? `tool:${tool}` : button.dataset.solidId ? `solid:${button.dataset.solidId}` : null;
 }
 function resolveButton(id: string | null): HTMLButtonElement | null {
   if (!id) return null;
   if (id === 'test:click') return ui.testGestureButton;
+  if (id.startsWith('preset:')) return ui.sizePresetButtons.get(id.slice(7)) || null;
   if (id.startsWith('tool:')) return ui.paletteButtons.get(id.slice(5) as Tool) || null;
   return [...document.querySelectorAll<HTMLButtonElement>('[data-solid-id]')].find(button => button.dataset.solidId === id.slice(6)) || null;
 }
 function eligible(button: HTMLButtonElement | null): button is HTMLButtonElement {
-  return !!button && !button.disabled && (!calibration || button === ui.testGestureButton) && !!buttonId(button) && button.getBoundingClientRect().width > 0;
+  return !projectOpening && !projectPicking && !!button && !button.disabled && (!calibration || button === ui.testGestureButton) && !!buttonId(button) && button.getBoundingClientRect().width > 0;
 }
 function hitButton(x: number, y: number): HTMLButtonElement | null {
   const direct = document.elementFromPoint(x, y)?.closest<HTMLButtonElement>('button') || null;
@@ -232,12 +252,13 @@ ui.testGestureButton.addEventListener('click', () => testClick('mouse'));
 
 function presentManipulation() {
   const state = controller.state;
-  if (!cameraRunning || calibration || state.busy || state.paused) { ui.clearManipulationFeedback(); return; }
+  if (!cameraRunning || calibration || projectOpening || projectPicking || state.busy || state.paused) { ui.clearManipulationFeedback(); return; }
   if (state.draft?.kind === 'scale') ui.setManipulationFeedback('scale', scaling?.phase || 'ready', state.draft.uniformScale);
   else if (state.draft?.kind === 'move') ui.setManipulationFeedback('move', movePhase);
   else ui.clearManipulationFeedback();
 }
 function handleGesture(output: GestureOutput) {
+  if (projectOpening || projectPicking) { ui.setGestureCursor(0, 0, false, false); return; }
   try { processGesture(output); } finally { presentManipulation(); }
 }
 function processGesture(output: GestureOutput) {
@@ -274,12 +295,13 @@ function processGesture(output: GestureOutput) {
   const phases: Record<string, string> = { 'tracking-lost': 'Show both hands.', 'gate-closed': 'Open your other palm; keep at least three fingers straight.', release: 'Fully separate thumb and index finger to rearm.', idle: 'Aim at a button.', hover: 'Hold steady while the progress bar fills.', ready: tuning.mode === 'pinch' ? 'Ready — pinch thumb and index finger.' : 'Hold steady to activate.', closing: 'Pinch detected — target held steady.', activated: 'Click registered. Release before your next click.', 'leave-targets': 'Move away from the buttons to rearm dwell.' };
   const gate = !output.toolbarArmed ? output.otherRatio !== undefined && output.otherRatio < profile.pinchOpen ? `Spread your other thumb and index apart: ${output.otherRatio.toFixed(2)} / ${profile.pinchOpen.toFixed(2)} required.` : !output.otherOpen ? 'Straighten at least three fingers on your other hand.' : 'Hold your other palm open briefly.' : phases[activation.phase] || 'Ready';
   ui.setTracking(output.toolbarArmed ? `Toolbar armed · ${tuning.mode === 'dwell' ? 'dwell assist' : 'pinch to select'}` : 'Two hands tracked · open other hand for tools');
-  ui.setGestureFeedback({ hands: handFeedback, pinch: pinchFeedback, gate, target: target?.textContent?.replace(/\s+/g, ' ').trim() || 'No target', progress: activation.progress });
+  ui.setGestureFeedback({ hands: handFeedback, pinch: pinchFeedback, gate, target: target?.getAttribute('aria-label') || target?.textContent?.replace(/\s+/g, ' ').trim() || 'No target', progress: activation.progress });
   if (activation.activate) {
     const button = resolveButton(activation.activate);
     if (!eligible(button)) return;
     if (button === ui.testGestureButton) testClick('gesture');
     else if (activation.activate.startsWith('tool:')) void runTool(activation.activate.slice(5) as Tool, 'gesture-rules');
+    else if (button.dataset.sizePreset) chooseSizePreset(button.dataset.sizePreset, 'gesture-rules');
     else if (button.dataset.solidId) selectSolid(button.dataset.solidId, button);
     return;
   }
@@ -309,6 +331,7 @@ function processGesture(output: GestureOutput) {
 }
 
 function beginCalibration() {
+  if (projectOpening || projectPicking) return;
   if (!cameraRunning) { ui.setStatus('Enable the camera before calibration.'); return; }
   controller.cancel(); recognizer.reset();
   moving = null; scaling = null; resetActivation();
@@ -391,6 +414,51 @@ ui.tuningSensitivity.addEventListener('change', changeTuning);
 ui.tuningActivation.addEventListener('change', changeTuning);
 ui.tuningHover.addEventListener('change', changeTuning);
 ui.exportButton.addEventListener('click', () => downloadJSON('SignToAST-project.json', controller.exportDocument()));
+ui.openProjectButton.addEventListener('click', () => {
+  if (!initialized || projectOpening || projectPicking || controller.state.busy || controller.state.draft) return;
+  // Browser file access starts with this ordinary user click during project setup.
+  ui.projectFileInput.value = '';
+  projectPicking = true;
+  moving = null; scaling = null; resetActivation(); ui.clearManipulationFeedback();
+  ui.update({ ...controller.state, busy: true });
+  try { ui.projectFileInput.click(); }
+  catch { finishPicking(); ui.setStatus('The file picker could not open. Try Open project again.'); }
+});
+function finishPicking() {
+  projectPicking = false; recognizer.reset(); resetActivation();
+  ui.update({ ...controller.state, busy: controller.state.busy || !initialized || projectOpening });
+}
+ui.projectFileInput.addEventListener('cancel', finishPicking);
+ui.projectFileInput.addEventListener('change', () => { finishPicking(); void openProject(); });
+async function openProject() {
+  const file = ui.projectFileInput.files?.[0];
+  if (!file || projectOpening) return;
+  if (!initialized || controller.state.busy || controller.state.draft) {
+    ui.setStatus('Commit or Cancel the current preview, then open your project again.'); return;
+  }
+  projectOpening = true;
+  moving = null; scaling = null; resetActivation(); ui.clearManipulationFeedback();
+  ui.update({ ...controller.state, busy: true });
+  try {
+    if (file.size > MAX_PROJECT_FILE_BYTES) throw Error('Project exceeds the 8 MB file limit.');
+    const saved = parseProjectFile(await file.text());
+    if (!await ui.reviewProject(file.name, saved.solids.length, saved.commands.length)) {
+      ui.setStatus('Open cancelled. Current scene preserved.'); return;
+    }
+    if (!await controller.restore(saved)) throw Error(controller.state.message);
+    persistenceReady = true;
+    presentation.update(controller.state, initialized, persistenceReady);
+    selectionMode = false; ui.setSelectedTool(null); viewport.fit();
+    ui.confirmAction(`Opened ${file.name}: ${saved.solids.length} solid${saved.solids.length === 1 ? '' : 's'}.`);
+    ui.setStatus('Project opened and saved locally. Undo starts with edits made after opening.');
+  } catch (error) {
+    ui.setStatus(`Could not open project. ${error instanceof Error ? error.message : 'Invalid project file.'} Current scene preserved.`);
+  } finally {
+    projectOpening = false; ui.projectFileInput.value = '';
+    recognizer.reset(); resetActivation();
+    ui.update({ ...controller.state, busy: controller.state.busy || !initialized });
+  }
+}
 const snapshotButton = document.createElement('button');
 snapshotButton.id = 'save-preview'; snapshotButton.textContent = 'Snapshot'; snapshotButton.title = 'Save the CAD viewport as a PNG image';
 ui.metricsExportButton.before(snapshotButton);
@@ -412,6 +480,7 @@ recordButton.addEventListener('click', async () => {
 ui.metricsExportButton.addEventListener('click', () => downloadJSON('SignToAST-measurements.json', { capturedAt: new Date().toISOString(), backend: tracking.backend, camera: tracking.stats, recognition: 'MediaPipe + temporal gesture rules', notes: 'Browser timings; not physical motion-to-action latency.', metrics: measurements.summary(), presentation: presentation.diagnostics, viewport: viewport.diagnostics }));
 let resetArmedUntil = 0;
 ui.resetButton.addEventListener('click', () => {
+  if (projectOpening || projectPicking) return;
   if (performance.now() > resetArmedUntil) { resetArmedUntil = performance.now() + 3000; ui.setStatus('Click Reset again within 3 seconds to clear the local scene.'); return; }
   resetArmedUntil = 0; persistenceReady = true; controller.reset(); viewport.resetCamera(); ui.setSelectedTool(null);
 });
@@ -444,6 +513,7 @@ async function initialize() {
   initialized = true;
   ui.resetButton.disabled = false;
   presentation.update(controller.state, initialized, persistenceReady);
+  if (controller.state.scene.solids.length) viewport.fit();
 }
 void initialize();
 window.addEventListener('beforeunload', () => { tracking.stop(); geometry.dispose(); viewport.dispose(); presentation.dispose(); });

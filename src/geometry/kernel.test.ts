@@ -39,4 +39,19 @@ describe('actual Manifold WASM geometry',()=>{
     expect(result.volume).toBeGreaterThan(19000);
     expect(document.commands.at(-1)?.ast.type).toBe('Subtract');
   });
+  it('builds a non-cubic precise preset box with independent X/Y/Z extents', () => {
+    const mesh = buildMesh(kernel, { kind: 'box', dimensions: [20, 30, 40] });
+    expect(mesh.volume).toBeCloseTo(24000, 6);
+    for (const [axis, halfExtent] of [10, 15, 20].entries()) {
+      const values = Array.from(mesh.positions).filter((_, index) => index % 3 === axis);
+      expect(Math.min(...values)).toBe(-halfExtent); expect(Math.max(...values)).toBe(halfExtent);
+    }
+  });
+  it.each([[3, 20], [5, 40], [8, 60]])('builds a precise cylinder of radius %i and height %i', (radius, height) => {
+    const mesh = buildMesh(kernel, { kind: 'cylinder', radius, height, segments: 32 });
+    const expectedVolume = 32 * 0.5 * radius ** 2 * Math.sin(2 * Math.PI / 32) * height;
+    expect(mesh.volume).toBeCloseTo(expectedVolume, 4);
+    const z = Array.from(mesh.positions).filter((_, index) => index % 3 === 2);
+    expect(Math.min(...z)).toBe(-height / 2); expect(Math.max(...z)).toBe(height / 2);
+  });
 });

@@ -1,5 +1,6 @@
 import type { CommandAST, ControllerState, Draft, ExecutionRequest, GeometryAdapter, GeometryMesh, SceneDocument, Solid, Vec3 } from '../shared/types';
 import { MAX_SOLIDS, MAX_SCALE, MIN_SCALE, validateCommand, validateDocument, validatePosition } from './validation';
+import { getSizePreset } from './presets';
 
 const copy = <T>(value: T): T => structuredClone(value);
 const emptyScene = (): SceneDocument => ({ schemaVersion: 1, units: 'mm', revision: 0, solids: [], commands: [] });
@@ -34,6 +35,29 @@ export class Controller {
     const number = this.state.scene.commands.filter(command => command.ast.type === 'Create' && command.ast.primitive === primitive).length + 1;
     const solid: Solid = { id: id(primitive.toLowerCase()), name: `${primitive} ${number}`, recipe: primitive === 'Box' ? { kind: 'box', dimensions: [20,20,20] } : { kind: 'cylinder', radius: 5, height: 60, segments: 32 }, position: [0,0,0], scale: 1, color: primitive === 'Box' ? '#b8d7b3' : '#e5a96d' };
     this.start({ kind: 'create', solid }, `${primitive} preview ready. Commit to create it, or cancel.`);
+  }
+  applySizePreset(key: string): boolean {
+    const draft = this.state.draft;
+    if (this.state.busy || this.state.paused || draft?.kind !== 'create') return false;
+    const preset = getSizePreset(key);
+    if (!preset) return false;
+    const recipe = draft.solid.recipe;
+    let nextRecipe: Solid['recipe'];
+    if (recipe.kind === 'box' && preset.primitive === 'Box') {
+      const axis = { x: 0, y: 1, z: 2 }[preset.field];
+      if (recipe.dimensions[axis] === preset.value) return false;
+      const dimensions: Vec3 = [...recipe.dimensions];
+      dimensions[axis] = preset.value;
+      nextRecipe = { ...recipe, dimensions };
+    } else if (recipe.kind === 'cylinder' && preset.primitive === 'Cylinder') {
+      if (recipe[preset.field] === preset.value) return false;
+      nextRecipe = { ...recipe, [preset.field]: preset.value };
+    } else return false;
+    // New identities invalidate the native preview geometry and structural UI key.
+    // The object ID, spatial placement, and committed document remain unchanged.
+    this.state.draft = { ...draft, solid: { ...draft.solid, recipe: nextRecipe } };
+    this.notify(`${preset.primitive} size updated: ${preset.label}. Commit to create it.`);
+    return true;
   }
   beginMove(): void { if (!this.canBegin()) return; const solid = this.selected(); if (!solid) return this.notify('Select a solid before moving.'); this.start({ kind:'move', targetId:solid.id, position:[...solid.position] }, 'Pinch and drag the selected solid. Release freezes the preview.'); }
   beginScale(): void { if (!this.canBegin()) return; const solid = this.selected(); if (!solid) return this.notify('Select a solid before scaling.'); this.start({ kind:'scale', targetId:solid.id, uniformScale:solid.scale }, 'Pinch both hands and change their separation. Commit when ready.'); }

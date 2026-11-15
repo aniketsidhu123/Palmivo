@@ -9,7 +9,7 @@ The compiler/geometry subsystem was verified with **22 passing tests** during im
 | Check | Status / result |
 | --- | --- |
 | Complete TypeScript check | Passed |
-| Complete automated test suite | 132 tests passed across fourteen source test files after Prototype 03 polish |
+| Complete automated test suite | 200 tests passed across sixteen source test files after Prototype 04 features |
 | Production build and asset verification | Passed; six tracking assets SHA-256 verified, geometry WASM emitted and initialized |
 | Production browser smoke test | Ten consecutive pointer/keyboard CAD sequences passed; no browser errors |
 | Portable launcher smoke test | Included Node v24.22.1 launched the packaged server; packaged app passed Create/Subtract/Undo and reload restoration on port 4180 |
@@ -91,4 +91,24 @@ Implemented the five improvements from the recorded-demo review: operation-aware
 [Polish browser measurements](media/polish-measurements.json) retain the actual samples and update/allocation counters. In that camera-off ten-run session, 40 preview transforms produced 9 coalesced inspector updates. Boolean p95 was 5.98 ms over ten samples; frame-interval p50/p95 was 6.07/6.82 ms. These are observations from this run, not a controlled before/after speedup comparison or a physical gesture-latency measurement.
 
 The presenter's supplied recording confirms the pre-polish gesture workflow succeeds. Prototype 03 was tested through automated landmark sequences and browser interaction; a fresh physical gesture rehearsal of this polished build remains a presenter check.
+
+## Prototype 04 features — November 15, 2026
+
+Release scope for the November 16 evening submission: precise creation presets and reopening exported version 1 projects.
+
+- All 200 tests passed across 16 source test files. TypeScript, production bundling, and local-asset verification passed.
+- Box X/Y/Z independently accept 20, 30, or 40 mm. Cylinder radius accepts 3, 5, or 8 mm and height accepts 20, 40, or 60 mm. Tests check exact Create AST values, immutable preview replacement, Cancel, Commit, Undo, disabled states, and actual Manifold volumes/extents.
+- Six full landmark-pipeline scenarios cover the default and precise demo at simulated 13/30/60 FPS. The precise demo uses a 20 × 30 × 40 mm box scaled approximately 1.4× and a radius 3 mm, height 60 mm cutter. Tests verify the expected through-hole volume, one activation per held pinch, explicit Commit, export/parse/rebuild equality, preserved AST history, and continued editing after reopening.
+- Project parsing tests cover the existing distributed export, complete saved command shapes, malformed/unsupported/oversized files, invalid numeric values, duplicate IDs, and bounded recipe depth/complexity. A failed rebuild preserves the previous scene, meshes, selection, draft, and session Undo history.
+- Ten consecutive production-browser pointer/keyboard demos passed with precise presets, 1.40× scaling, real subtraction, Undo, and Move/Cancel. No browser errors were recorded. This is a browser interaction test; the synthetic landmark scenarios above provide the gesture logic coverage.
+- Browser checks exercised all nine Box preset buttons, draft cancellation, Cylinder radius/height controls, the project review, Cancel and Escape, invalid-file rejection, successful reopening, re-export equality, and reload restoration without camera access. Opening a file blocks editing while the picker and review are active. Cancel of the native OS file picker remains a presenter check; review cancellation was verified.
+- Larger presets revealed that the decorative floor could obscure a solid. It now follows the lowest visible bound, including manipulation previews, without allocating new geometry. Opened and restored scenes are fitted to the same oblique camera direction.
+- At 1264 × 740, all nine Box presets and Commit passed center-point hit tests with no horizontal overflow. The 768 × 900 layout also retained usable preset controls without horizontal overflow.
+- The refreshed portable folder was launched with its bundled Node runtime on port 4184. An additional complete precise demo, opening the packaged example, Move/Cancel, and reload restoration passed with no browser errors. The running portable server on port 4173 serves the refreshed Prototype 04 build.
+
+[Prototype 04 browser measurements](media/prototype04-measurements.json) retain the ten-run samples: Boolean p50/p95 3.58/7.00 ms over ten operations; frame-interval p50/p95 6.07/6.17 ms. Tracking was off during that browser run. These figures do not measure physical gesture latency or guarantee performance on another display.
+
+The [precise example project](../examples/precise-through-hole-project.json) was exported by the tested browser and reopened without changing any scene or command data. The command log survives reopening; Undo snapshots start with edits made in the new session. [Project review screenshot](media/project-open-review.jpg), [precise controls screenshot](media/precise-size-presets.jpg), and [reopened portable model](media/prototype04-reopened.jpg) show the actual camera-off application.
+
+A fresh physical gesture rehearsal, Wi-Fi-disabled reload, and ten-minute soak on the presenter's final setup remain the final hardware checks. The recognizer remains MediaPipe + temporal gesture rules.
 

@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { ManifoldToplevel } from 'manifold-3d';
 import { Controller } from '../core/controller';
 import { PresentationCoordinator } from '../core/presentation';
+import { parseProjectFile } from '../core/projectFile';
 import { buildMesh, initializeKernel } from '../geometry/kernel';
 import { GestureRecognizer } from '../tracking/gestures';
 import { TargetActivation } from '../tracking/activation';
@@ -26,17 +27,19 @@ function hand(side: 'Left' | 'Right', ratio: number, offset: number): TrackedHan
 }
 
 describe('complete gesture-to-AST CAD demonstration', () => {
-  it.each([13,30,60])('creates, scales, subtracts, undoes, and cancels through the real pipeline at %i FPS', async fps => {
-    const controller = new Controller({ build: async recipe => buildMesh(kernel, recipe) });
+  const scenarios = [13,30,60].flatMap(fps => [{ fps, precise: false, mode: 'default' }, { fps, precise: true, mode: 'precise presets + project reopen' }]);
+  it.each(scenarios)('creates, scales, subtracts, undoes, and cancels $mode through the real pipeline at $fps FPS', async ({ fps, precise }) => {
+    const geometry = { build: async (recipe: Parameters<typeof buildMesh>[1]) => buildMesh(kernel, recipe) };
+    let controller = new Controller(geometry);
     const recognizer = new GestureRecognizer();
     const activation = new TargetActivation({ hoverMs: 350 });
     const presentation = new PresentationCoordinator({ full: () => {}, preview: () => {}, renderPreview: () => {}, persist: () => {} });
-    const stop = controller.subscribe(state => presentation.update(state, true, true));
+    let stop = controller.subscribe(state => presentation.update(state, true, true));
     let frameIndex = 0;
     let pendingAction: Promise<boolean> | null = null;
     let target: string | null = null;
     let scale: ScaleSession | null = null;
-    let boxId = '', cylinderId = '';
+    let boxId = '', cylinderId = '', restoredId = '';
     const fired: string[] = [];
     const dispatch = (id: string) => {
       fired.push(id);
@@ -50,6 +53,8 @@ describe('complete gesture-to-AST CAD demonstration', () => {
       else if (id === 'tool:cancel') controller.cancel();
       else if (id === 'solid:box') controller.select(boxId);
       else if (id === 'solid:cylinder') controller.chooseCutter(cylinderId);
+      else if (id === 'solid:restored') controller.select(restoredId);
+      else if (id.startsWith('preset:')) expect(controller.applySizePreset(id.slice('preset:'.length))).toBe(true);
     };
     const tick = (dominantRatio = 1.2, otherRatio = 1.2, separation = .3, missing = false): GestureOutput => {
       const frame: TrackingFrame = { timestamp: frameIndex++ * 1000 / fps, width: 640, height: 480, inferenceMs: 0,
@@ -74,7 +79,17 @@ describe('complete gesture-to-AST CAD demonstration', () => {
       expect(fired.length).toBe(previous + 1);
       target = null; tick(); tick();
     };
-    await click('tool:box'); await click('tool:commit'); boxId = controller.state.selectedId!;
+    await click('tool:box');
+    if (precise) {
+      const originalObjectId = controller.state.draft?.kind === 'create' ? controller.state.draft.solid.id : '';
+      await click('preset:box:y:30'); await click('preset:box:z:40');
+      expect(controller.getDraftAST()).toMatchObject({ type: 'Create', objectId: originalObjectId, primitive: 'Box', dimensions: [20,30,40] });
+      expect(fired.filter(id => id === 'preset:box:y:30')).toHaveLength(1);
+      expect(fired.filter(id => id === 'preset:box:z:40')).toHaveLength(1);
+    }
+    // Clicking size controls, holding the pinch, and releasing still do not commit.
+    expect(controller.state.scene.solids).toHaveLength(0); expect(controller.state.scene.commands).toHaveLength(0);
+    await click('tool:commit'); boxId = controller.state.selectedId!;
     expect(controller.state.scene.solids).toHaveLength(1);
     await click('tool:scale');
     const beforePreview = { ...presentation.diagnostics };
@@ -93,20 +108,57 @@ describe('complete gesture-to-AST CAD demonstration', () => {
     await click('tool:commit');
     const actualScale = controller.state.scene.solids[0].scale;
     expect(actualScale).toBeCloseTo(1.4, 2);
-    await click('tool:cylinder'); await click('tool:commit'); cylinderId = controller.state.selectedId!;
+    await click('tool:cylinder');
+    if (precise) {
+      await click('preset:cylinder:radius:3');
+      expect(controller.getDraftAST()).toMatchObject({ type: 'Create', primitive: 'Cylinder', dimensions: [3,60] });
+      expect(fired.filter(id => id === 'preset:cylinder:radius:3')).toHaveLength(1);
+      expect(controller.state.scene.solids).toHaveLength(1);
+    }
+    await click('tool:commit'); cylinderId = controller.state.selectedId!;
     await click('solid:box'); await click('tool:subtract'); await click('solid:cylinder');
     expect(controller.getDraftAST()).toMatchObject({ type: 'Subtract', targetId: boxId, cutterId: cylinderId });
     await click('tool:commit');
     expect(controller.state.scene.solids).toHaveLength(1);
     const result = controller.meshes.get(controller.state.selectedId!)!;
-    const boreArea = 32 * .5 * 25 * Math.sin(2 * Math.PI / 32);
-    expect(result.volume).toBeCloseTo(8000 * actualScale ** 3 - boreArea * 20 * actualScale, 3);
+    const radius = precise ? 3 : 5;
+    const boxVolume = precise ? 20 * 30 * 40 : 8000;
+    const boxDepth = precise ? 40 : 20;
+    const boreArea = 32 * .5 * radius ** 2 * Math.sin(2 * Math.PI / 32);
+    expect(60).toBeGreaterThan(boxDepth * actualScale);
+    expect(result.volume).toBeCloseTo(boxVolume * actualScale ** 3 - boreArea * boxDepth * actualScale, 3);
     expect(controller.state.scene.commands.map(c => c.ast.type)).toEqual(['Create','Scale','Create','Subtract']);
     expect(controller.state.scene.commands.every(c => c.source === 'gesture-rules')).toBe(true);
-    await click('tool:undo'); expect(controller.state.scene.solids).toHaveLength(2);
-    await click('solid:box'); const original = controller.exportDocument();
-    await click('tool:move'); controller.updateMove([5,3,0]); await click('tool:cancel');
-    expect(controller.exportDocument()).toEqual(original);
+    if (precise) {
+      const exported = controller.exportDocument();
+      const parsed = parseProjectFile(JSON.stringify(exported));
+      const reopened = new Controller(geometry);
+      expect(await reopened.restore(parsed)).toBe(true);
+      restoredId = exported.solids[0].id;
+      expect(reopened.exportDocument()).toEqual(exported);
+      expect(reopened.state.scene.commands).toEqual(exported.commands);
+      expect(reopened.meshes.get(restoredId)!.volume).toBeCloseTo(result.volume, 5);
+      expect(reopened.state.historyCount).toBe(0);
+      // Persisted commands are provenance; session Undo snapshots are deliberately fresh.
+      reopened.undo(); expect(reopened.exportDocument()).toEqual(exported);
+      stop(); controller = reopened; stop = controller.subscribe(state => presentation.update(state, true, true));
+      await click('solid:restored'); expect(controller.state.selectedId).toBe(restoredId);
+      await click('tool:move'); controller.updateMove([5,3,0]); await click('tool:cancel');
+      expect(controller.exportDocument()).toEqual(exported); expect(controller.state.historyCount).toBe(0);
+      // A new committed edit after reopening has a new undo snapshot.
+      await click('tool:move'); controller.updateMove([5,3,0]); await click('tool:commit');
+      expect(controller.state.scene.solids[0].position).toEqual([5,3,0]); expect(controller.state.historyCount).toBe(1);
+      await click('tool:undo');
+      expect(controller.state.scene.solids).toEqual(exported.solids);
+      expect(controller.state.scene.commands).toEqual(exported.commands);
+      expect(controller.state.scene.revision).toBeGreaterThan(exported.revision);
+      expect(controller.state.historyCount).toBe(0);
+    } else {
+      await click('tool:undo'); expect(controller.state.scene.solids).toHaveLength(2);
+      await click('solid:box'); const original = controller.exportDocument();
+      await click('tool:move'); controller.updateMove([5,3,0]); await click('tool:cancel');
+      expect(controller.exportDocument()).toEqual(original);
+    }
     stop(); presentation.dispose();
   });
 });

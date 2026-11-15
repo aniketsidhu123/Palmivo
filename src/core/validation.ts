@@ -1,46 +1,100 @@
-import type { CommandAST, ExecutionRequest, SceneDocument, Solid, SolidRecipe, Vec3 } from '../shared/types';
+import type { CommandAST, ExecutionRequest, SceneDocument, Vec3 } from '../shared/types';
 
 export const MAX_SOLIDS = 10;
 export const MIN_SCALE = 0.5;
 export const MAX_SCALE = 2;
+export const MAX_RECIPE_NODES = 2048;
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
+function record(value: unknown, message: string): asserts value is Record<string, unknown> {
+  assert(value !== null && typeof value === 'object' && !Array.isArray(value), message);
+}
+function fields(value: Record<string, unknown>, names: string[], label: string): void {
+  assert(Object.keys(value).length === names.length && names.every(name => Object.hasOwn(value, name)), `Invalid ${label} fields.`);
+}
+function positive(value: unknown, maximum: number): boolean { return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= maximum; }
+function identifier(value: unknown, label: string): asserts value is string {
+  assert(typeof value === 'string' && value.length > 0 && value.length <= 128, `Invalid ${label} ID.`);
+}
 export function validatePosition(value: unknown): asserts value is Vec3 {
-  assert(Array.isArray(value) && value.length === 3 && value.every(n => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 500), 'Position must contain three finite values within ±500 mm.');
+  assert(Array.isArray(value) && value.length === 3 && [...value].every(n => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 500), 'Position must contain three finite values within ±500 mm.');
 }
 export function validateScale(value: unknown): asserts value is number {
   assert(typeof value === 'number' && Number.isFinite(value) && value >= MIN_SCALE && value <= MAX_SCALE, 'Uniform scale must be between 0.5 and 2.0.');
 }
-function validateRecipe(recipe: SolidRecipe, depth = 0): void {
-  assert(recipe && typeof recipe === 'object' && depth < 32, 'Invalid or excessively nested solid recipe.');
+function validateRecipe(recipe: unknown, depth: number, budget: { remaining: number }): void {
+  record(recipe, 'Invalid solid recipe.');
+  assert(depth < 32, 'Invalid or excessively nested solid recipe.');
+  assert(--budget.remaining >= 0, `Project recipes exceed the ${MAX_RECIPE_NODES}-node complexity limit.`);
   switch (recipe.kind) {
     case 'box':
-      assert(Array.isArray(recipe.dimensions) && recipe.dimensions.length === 3 && recipe.dimensions.every(n => Number.isFinite(n) && n > 0 && n <= 300), 'Box dimensions must be positive and at most 300 mm.');
+      fields(recipe, ['kind', 'dimensions'], 'box recipe');
+      assert(Array.isArray(recipe.dimensions) && recipe.dimensions.length === 3 && [...recipe.dimensions].every(n => positive(n, 300)), 'Box dimensions must be positive and at most 300 mm.');
       break;
     case 'cylinder':
-      assert(Number.isFinite(recipe.radius) && recipe.radius > 0 && recipe.radius <= 150 && Number.isFinite(recipe.height) && recipe.height > 0 && recipe.height <= 300, 'Invalid cylinder dimensions.');
-      assert(Number.isInteger(recipe.segments) && recipe.segments >= 8 && recipe.segments <= 128, 'Invalid cylinder resolution.');
+      fields(recipe, ['kind', 'radius', 'height', 'segments'], 'cylinder recipe');
+      assert(positive(recipe.radius, 150) && positive(recipe.height, 300), 'Invalid cylinder dimensions.');
+      assert(typeof recipe.segments === 'number' && Number.isInteger(recipe.segments) && recipe.segments >= 8 && recipe.segments <= 128, 'Invalid cylinder resolution.');
       break;
-    case 'subtract': validateSolid(recipe.target, depth + 1); validateSolid(recipe.cutter, depth + 1); break;
+    case 'subtract':
+      fields(recipe, ['kind', 'target', 'cutter'], 'subtraction recipe');
+      validateSolid(recipe.target, depth + 1, budget); validateSolid(recipe.cutter, depth + 1, budget);
+      assert((recipe.target as Record<string, unknown>).id !== (recipe.cutter as Record<string, unknown>).id, 'The cutter must be a different solid.');
+      break;
     default: throw new Error('Unknown solid recipe.');
   }
 }
-function validateSolid(solid: Solid, depth = 0): void {
-  assert(solid && typeof solid.id === 'string' && solid.id.length > 0 && solid.id.length <= 128, 'Invalid solid ID.');
+function validateSolid(solid: unknown, depth: number, budget: { remaining: number }): asserts solid is { id: string } {
+  record(solid, 'Invalid solid.');
+  fields(solid, ['id', 'name', 'recipe', 'position', 'scale', 'color'], 'solid');
+  identifier(solid.id, 'solid');
   assert(typeof solid.name === 'string' && solid.name.length <= 128, 'Invalid solid label.');
   assert(typeof solid.color === 'string' && /^#[0-9a-f]{6}$/i.test(solid.color), 'Invalid solid color.');
-  validatePosition(solid.position); validateScale(solid.scale); validateRecipe(solid.recipe, depth);
+  validatePosition(solid.position); validateScale(solid.scale); validateRecipe(solid.recipe, depth, budget);
 }
-export function validateDocument(document: SceneDocument): void {
-  assert(document && document.schemaVersion === 1 && document.units === 'mm', 'Unsupported project format.');
+function validateSavedAST(ast: unknown): void {
+  record(ast, 'Invalid saved command.');
+  switch (ast.type) {
+    case 'Create':
+      fields(ast, ['type', 'objectId', 'primitive', 'dimensions', 'position'], 'Create command');
+      identifier(ast.objectId, 'object');
+      assert(ast.primitive === 'Box' || ast.primitive === 'Cylinder', 'Unknown primitive.');
+      assert(Array.isArray(ast.dimensions) && ast.dimensions.length === (ast.primitive === 'Box' ? 3 : 2) && [...ast.dimensions].every(n => positive(n, 300)), 'Incomplete primitive dimensions.');
+      assert(ast.primitive !== 'Cylinder' || positive(ast.dimensions[0], 150), 'Invalid cylinder dimensions.');
+      validatePosition(ast.position); break;
+    case 'Move':
+      fields(ast, ['type', 'targetId', 'position'], 'Move command');
+      identifier(ast.targetId, 'target'); validatePosition(ast.position); break;
+    case 'Scale':
+      fields(ast, ['type', 'targetId', 'uniformScale'], 'Scale command');
+      identifier(ast.targetId, 'target'); validateScale(ast.uniformScale); break;
+    case 'Subtract':
+      fields(ast, ['type', 'targetId', 'cutterId', 'resultId'], 'Subtract command');
+      identifier(ast.targetId, 'target'); identifier(ast.cutterId, 'cutter'); identifier(ast.resultId, 'result');
+      assert(ast.targetId !== ast.cutterId, 'The cutter must be a different solid.');
+      assert(ast.resultId !== ast.targetId && ast.resultId !== ast.cutterId, 'Invalid result ID.'); break;
+    default: throw new Error('Invalid saved command.');
+  }
+}
+export function validateDocument(document: unknown): asserts document is SceneDocument {
+  record(document, 'Unsupported project format.');
+  assert(document.schemaVersion === 1 && document.units === 'mm', 'Unsupported project format. Use a SignToAST version 1 project in mm.');
+  fields(document, ['schemaVersion', 'units', 'revision', 'solids', 'commands'], 'project');
+  assert(typeof document.revision === 'number', 'Invalid scene revision.');
   assert(Number.isSafeInteger(document.revision) && document.revision >= 0, 'Invalid scene revision.');
   assert(Array.isArray(document.solids) && document.solids.length <= MAX_SOLIDS, 'A project can contain at most 10 visible solids.');
   assert(Array.isArray(document.commands) && document.commands.length <= 10000, 'Invalid command history.');
   const ids = new Set<string>();
-  for (const solid of document.solids) { validateSolid(solid); assert(!ids.has(solid.id), 'Duplicate solid IDs.'); ids.add(solid.id); }
+  const budget = { remaining: MAX_RECIPE_NODES };
+  for (const solid of document.solids) { validateSolid(solid, 0, budget); assert(!ids.has(solid.id), 'Duplicate solid IDs.'); ids.add(solid.id); }
   const commandIds = new Set<string>();
   for (const command of document.commands) {
-    assert(command && typeof command.commandId === 'string' && !commandIds.has(command.commandId), 'Duplicate or invalid command ID.');
-    assert(command.ast && ['Create', 'Move', 'Scale', 'Subtract'].includes(command.ast.type), 'Invalid saved command.');
+    record(command, 'Invalid saved command.');
+    fields(command, ['commandId', 'baseSceneRevision', 'source', 'ast'], 'saved command');
+    identifier(command.commandId, 'command');
+    assert(!commandIds.has(command.commandId), 'Duplicate command ID.');
+    assert(typeof command.baseSceneRevision === 'number' && Number.isSafeInteger(command.baseSceneRevision) && command.baseSceneRevision >= 0, 'Invalid saved command revision.');
+    assert(command.source === 'gesture-rules' || command.source === 'pointer' || command.source === 'keyboard', 'Invalid saved command source.');
+    validateSavedAST(command.ast);
     commandIds.add(command.commandId);
   }
 }

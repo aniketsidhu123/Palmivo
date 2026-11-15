@@ -139,6 +139,7 @@ export class CADViewport {
     }
     const outlinedId = state.draft?.kind === 'create' ? state.draft.solid.id : state.selectedId;
     this.updateOutline(outlinedId ? this.solids.get(outlinedId)?.mesh ?? null : null);
+    this.updateFloor();
   }
 
   /** Hot path: the controller draft identity and scene are unchanged. */
@@ -155,6 +156,20 @@ export class CADViewport {
     mesh.updateMatrixWorld(true);
     // No geometry, material, or helper allocations while the hands manipulate a draft.
     this.outline?.update();
+    this.updateFloor();
+  }
+
+  private updateFloor(): void {
+    // A larger preset or a lowered solid must remain above the decorative floor.
+    // Bounding boxes are cached per geometry; continuous transforms allocate nothing.
+    let floorY = -17;
+    for (const { mesh } of this.solids.values()) {
+      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+      const minY = mesh.geometry.boundingBox?.min.y;
+      if (minY !== undefined && Number.isFinite(minY)) floorY = Math.min(floorY, mesh.position.y + minY * mesh.scale.y - 1);
+    }
+    this.floor.position.y = floorY;
+    this.grid.position.y = floorY + .02;
   }
 
   private updateOutline(selected: THREE.Object3D | null): void {
