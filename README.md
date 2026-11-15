@@ -85,6 +85,16 @@ For a demo fallback, choose **Dwell assist**. With both hands visible, keep the 
 
 If guided calibration is preventing practice, **Use current mapping** exits the guide explicitly. You can test or recalibrate that mapping afterward. Dwell assist can also use the current mapping without requiring three pinch cycles.
 
+## Prototype 03 interaction polish
+
+- A compact input strip sits above the canvas. It leaves the model visible and shows operation-specific Scale/Move instructions instead of asking for an open palm during two-hand manipulation.
+- Accepted actions pulse their button and remain visible for 800 ms. Subtract clearly labels Target and Cutter and prompts Commit after cutter selection.
+- Scale filters hand separation over 70 ms, suppresses tiny changes, and freezes on the first observed finger opening. Brief tracking interruptions hold the preview and preserve its baseline; invalid samples never invent motion or commit a command.
+- Mesh transforms update immediately. Inspector preview text refreshes at most ten times per second; scene persistence and structural UI updates happen on actual state changes. Geometry, materials, selection outlines, and object-list buttons are reused during preview.
+- Mouse/keyboard recovery, Cancel, Undo, and saved-project restoration remain part of the same tested workflow. Failed restoration preserves the original local save until an explicit reset.
+
+The source-only `/qa/polish.html` page (served with `pnpm dev`) tests active/held UI feedback and stable resources with simulated states. It never accesses the webcam and is not part of the production application. The included pointer-demo recording predates Prototype 03; its command sequence is still the same.
+
 ## Save and measure
 
 **Export project** downloads versioned project JSON with solid recipes, transforms, and committed AST history. IndexedDB also autosaves the current committed scene. Reloading rebuilds its meshes from those recipes. There is no arbitrary project/mesh import in this release.

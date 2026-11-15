@@ -38,10 +38,26 @@ export class Controller {
   beginMove(): void { if (!this.canBegin()) return; const solid = this.selected(); if (!solid) return this.notify('Select a solid before moving.'); this.start({ kind:'move', targetId:solid.id, position:[...solid.position] }, 'Pinch and drag the selected solid. Release freezes the preview.'); }
   beginScale(): void { if (!this.canBegin()) return; const solid = this.selected(); if (!solid) return this.notify('Select a solid before scaling.'); this.start({ kind:'scale', targetId:solid.id, uniformScale:solid.scale }, 'Pinch both hands and change their separation. Commit when ready.'); }
   beginSubtract(): void { if (!this.canBegin()) return; const solid = this.selected(); if (!solid) return this.notify('Select the target solid first.'); if (this.state.scene.solids.length < 2) return this.notify('Create a second solid to use as a cutter.'); this.start({ kind:'subtract', targetId:solid.id, cutterId:null, resultId:id('difference') }, `Target: ${solid.name}. Select a different solid as the cutter.`); }
-  select(solidId: string): void { if (!this.ready() || this.state.draft) return; const solid = this.state.scene.solids.find(s => s.id === solidId); if (!solid) return; this.state.selectedId = solidId; this.notify(`${solid.name} selected.`); }
-  chooseCutter(solidId: string): void { if (!this.ready() || this.state.draft?.kind !== 'subtract') return; const draft=this.state.draft; if (solidId === draft.targetId) return this.notify('Choose a different solid as cutter.'); const cutter=this.state.scene.solids.find(s=>s.id===solidId); if (!cutter) return; draft.cutterId=solidId; const target=this.state.scene.solids.find(s=>s.id===draft.targetId); this.notify(`Preview: ${target?.name} − ${cutter.name}. Commit to subtract.`); }
-  updateMove(position: Vec3): void { if (!this.ready() || this.state.draft?.kind !== 'move') return; try { validatePosition(position); this.state.draft.position=position.map(n=>Math.round(n)) as Vec3; this.emit(); } catch { /* Ignore invalid tracking samples. */ } }
-  updateScale(value: number): void { if (!this.ready() || this.state.draft?.kind !== 'scale' || !Number.isFinite(value)) return; this.state.draft.uniformScale=Math.max(MIN_SCALE,Math.min(MAX_SCALE,value)); this.emit(); }
+  select(solidId: string): void { if (!this.ready() || this.state.draft || solidId === this.state.selectedId) return; const solid = this.state.scene.solids.find(s => s.id === solidId); if (!solid) return; this.state.selectedId = solidId; this.notify(`${solid.name} selected.`); }
+  chooseCutter(solidId: string): void { if (!this.ready() || this.state.draft?.kind !== 'subtract') return; const draft=this.state.draft; if (draft.cutterId === solidId) return; if (solidId === draft.targetId) return this.notify('Choose a different solid as cutter.'); const cutter=this.state.scene.solids.find(s=>s.id===solidId); if (!cutter) return; draft.cutterId=solidId; const target=this.state.scene.solids.find(s=>s.id===draft.targetId); this.notify(`Preview: ${target?.name} − ${cutter.name}. Commit to subtract.`); }
+  updateMove(position: Vec3): void {
+    if (!this.ready() || this.state.draft?.kind !== 'move') return;
+    try {
+      validatePosition(position);
+      const snapped = position.map(n => Math.round(n)) as Vec3;
+      const previous = this.state.draft.position;
+      if (snapped.every((value, axis) => value === previous[axis])) return;
+      this.state.draft.position = snapped;
+      this.emit();
+    } catch { /* Ignore invalid tracking samples. */ }
+  }
+  updateScale(value: number): void {
+    if (!this.ready() || this.state.draft?.kind !== 'scale' || !Number.isFinite(value)) return;
+    const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
+    if (Math.abs(scale - this.state.draft.uniformScale) <= 1e-6) return;
+    this.state.draft.uniformScale = scale;
+    this.emit();
+  }
   private astForDraft(draft: Draft): CommandAST {
     switch(draft.kind) {
       case 'create': return { type:'Create', objectId:draft.solid.id, primitive:draft.solid.recipe.kind==='box'?'Box':'Cylinder', dimensions:draft.solid.recipe.kind==='box'?[...draft.solid.recipe.dimensions]:draft.solid.recipe.kind==='cylinder'?[draft.solid.recipe.radius,draft.solid.recipe.height]:[], position:[...draft.solid.position] };

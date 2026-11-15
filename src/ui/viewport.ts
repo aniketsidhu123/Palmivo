@@ -13,6 +13,7 @@ export class CADViewport {
   readonly camera = new THREE.PerspectiveCamera(34, 1, .1, 1500);
   readonly scene = new THREE.Scene();
   onFrame?: (frameMs: number) => void;
+  readonly diagnostics = { structuralUpdates: 0, previewUpdates: 0, outlineCreations: 0, geometryCreations: 0 };
   private readonly host: HTMLElement;
   private readonly solids = new Map<string, MeshEntry>();
   private readonly solidGroup = new THREE.Group();
@@ -21,6 +22,7 @@ export class CADViewport {
   private readonly pointer = new THREE.Vector2();
   private readonly observer: ResizeObserver;
   private outline: THREE.BoxHelper | null = null;
+  private outlinedMesh: THREE.Object3D | null = null;
   private frame = 0;
   private lastTime = 0;
   private disposed = false;
@@ -93,6 +95,8 @@ export class CADViewport {
   };
 
   update(state: ControllerState, meshes: Map<string, GeometryMesh>): void {
+    if (this.disposed) return;
+    this.diagnostics.structuralUpdates++;
     this.state = state;
     const solids = [...state.scene.solids];
     if (state.draft?.kind === 'create') solids.push(state.draft.solid);
@@ -106,6 +110,7 @@ export class CADViewport {
       if (!entry || entry.source !== source || entry.recipe !== solid.recipe && !source) {
         if (entry) this.disposeEntry(entry);
         const geometry = source ? this.fromMesh(source) : this.previewGeometry(solid);
+        this.diagnostics.geometryCreations++;
         const material = new THREE.MeshStandardMaterial({ color: solid.color || '#bce8cc', roughness: .5, metalness: .12, side: THREE.FrontSide, flatShading: true });
         const mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = true; mesh.receiveShadow = true;
@@ -122,25 +127,56 @@ export class CADViewport {
       const isPreview = state.draft?.kind === 'create' && state.draft.solid.id === solid.id;
       const isCutter = state.draft?.kind === 'subtract' && state.draft.cutterId === solid.id;
       mesh.material.color.set(isCutter ? '#ef9f83' : solid.color || '#bce8cc');
-      mesh.material.transparent = isPreview || isCutter;
+      const transparent = isPreview || isCutter;
+      const depthWrite = !isCutter;
+      const materialFlagsChanged = mesh.material.transparent !== transparent || mesh.material.depthWrite !== depthWrite;
+      mesh.material.transparent = transparent;
       mesh.material.opacity = isCutter ? .43 : isPreview ? .76 : 1;
-      mesh.material.depthWrite = !isCutter;
+      mesh.material.depthWrite = depthWrite;
       mesh.material.emissive.set(isPreview ? '#153c26' : '#000000');
-      mesh.material.needsUpdate = true;
+      if (materialFlagsChanged) mesh.material.needsUpdate = true;
       mesh.updateMatrixWorld(true);
     }
-    if (this.outline) {
-      this.scene.remove(this.outline); this.outline.geometry.dispose();
-      (this.outline.material as THREE.Material).dispose(); this.outline = null;
-    }
     const outlinedId = state.draft?.kind === 'create' ? state.draft.solid.id : state.selectedId;
-    const selected = outlinedId ? this.solids.get(outlinedId)?.mesh : null;
-    if (selected) {
+    this.updateOutline(outlinedId ? this.solids.get(outlinedId)?.mesh ?? null : null);
+  }
+
+  /** Hot path: the controller draft identity and scene are unchanged. */
+  updatePreview(state: ControllerState): void {
+    if (this.disposed) return;
+    this.diagnostics.previewUpdates++;
+    this.state = state;
+    const draft = state.draft;
+    if (draft?.kind !== 'move' && draft?.kind !== 'scale') return;
+    const mesh = this.solids.get(draft.targetId)?.mesh;
+    if (!mesh) return;
+    if (draft.kind === 'move') mesh.position.set(...draft.position);
+    else mesh.scale.setScalar(draft.uniformScale);
+    mesh.updateMatrixWorld(true);
+    // No geometry, material, or helper allocations while the hands manipulate a draft.
+    this.outline?.update();
+  }
+
+  private updateOutline(selected: THREE.Object3D | null): void {
+    if (!selected) { this.disposeOutline(); return; }
+    if (!this.outline) {
       this.outline = new THREE.BoxHelper(selected, 0xb8dea2);
-      (this.outline.material as THREE.LineBasicMaterial).transparent = true;
-      (this.outline.material as THREE.LineBasicMaterial).opacity = .38;
+      this.diagnostics.outlineCreations++;
+      this.outline.material.transparent = true;
+      this.outline.material.opacity = .38;
       this.scene.add(this.outline);
-    }
+    } else if (this.outlinedMesh !== selected) this.outline.setFromObject(selected);
+    else this.outline.update();
+    this.outlinedMesh = selected;
+  }
+
+  private disposeOutline(): void {
+    if (!this.outline) return;
+    this.scene.remove(this.outline);
+    this.outline.geometry.dispose();
+    this.outline.material.dispose();
+    this.outline = null;
+    this.outlinedMesh = null;
   }
 
   private fromMesh(source: GeometryMesh): THREE.BufferGeometry {
@@ -217,9 +253,10 @@ export class CADViewport {
     this.disposed = true; cancelAnimationFrame(this.frame); this.observer.disconnect();
     for (const entry of this.solids.values()) this.disposeEntry(entry);
     this.solids.clear();
-    if (this.outline) { this.outline.geometry.dispose(); (this.outline.material as THREE.Material).dispose(); }
+    this.disposeOutline();
     this.floor.geometry.dispose(); (this.floor.material as THREE.Material).dispose();
     this.grid.geometry.dispose(); this.grid.material.dispose();
+    this.scene.traverse(object => { if (object instanceof THREE.DirectionalLight) object.shadow.dispose(); });
     this.renderer.dispose(); this.renderer.domElement.remove();
   }
 }

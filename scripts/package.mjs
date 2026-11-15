@@ -23,6 +23,6 @@ await writeFile(path.join(out, 'package.json'), '{"private":true,"type":"module"
 console.log(`Portable offline release created at ${out}`);
 const source = path.join(root, 'release/SignToAST-Source');
 await mkdir(source, { recursive: true });
-for (const folder of ['src', 'scripts', 'public', 'docs', 'examples']) await cp(path.join(root, folder), path.join(source, folder), { recursive: true });
+for (const folder of ['src', 'scripts', 'public', 'docs', 'examples', 'qa']) await cp(path.join(root, folder), path.join(source, folder), { recursive: true });
 for (const file of ['package.json', 'pnpm-lock.yaml', 'tsconfig.json', 'vite.config.ts', 'vitest.config.ts', 'index.html', '.npmrc', '.gitignore', 'README.md', 'THIRD_PARTY_NOTICES.md', 'start-demo.cmd']) await cp(path.join(root, file), path.join(source, file));
 console.log(`Source and local model assets copied to ${source}`);

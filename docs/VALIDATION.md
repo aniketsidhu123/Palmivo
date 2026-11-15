@@ -9,7 +9,7 @@ The compiler/geometry subsystem was verified with **22 passing tests** during im
 | Check | Status / result |
 | --- | --- |
 | Complete TypeScript check | Passed |
-| Complete automated test suite | 80 tests passed across eight source test files after November 15 tuning |
+| Complete automated test suite | 132 tests passed across fourteen source test files after Prototype 03 polish |
 | Production build and asset verification | Passed; six tracking assets SHA-256 verified, geometry WASM emitted and initialized |
 | Production browser smoke test | Ten consecutive pointer/keyboard CAD sequences passed; no browser errors |
 | Portable launcher smoke test | Included Node v24.22.1 launched the packaged server; packaged app passed Create/Subtract/Undo and reload restoration on port 4180 |
@@ -75,4 +75,20 @@ New UI includes a nonmutating Test click counter, hand/ratio/readiness/target fe
 The 80-test suite includes 20 activation-state tests and eight real GestureRecognizer-to-TargetActivation integration tests at 13/15/30 FPS. These cover 20–50 px closing movements across button edges, repeated clicks, held-drag rejection, offhand poses, missing tracking, and two-hand scaling. New regression coverage also checks a single-frame dropout at 13 FPS. Release source copies are excluded from test discovery.
 
 Browser checks verified tuning controls, practice-counter wiring, persistence of activation mode across reload, and Create/Scale/Subtract/Undo recovery. An initial startup click timing issue was corrected by disabling tools until restoration finishes. The final built files and SHA-256 tracking assets passed verification. [Updated controls screenshot](media/gesture-tuning.jpg) is a camera-off UI test, not evidence of physical gesture success. Presenter retesting has been requested; its outcome is not recorded yet.
+
+## Prototype 03 polish validation — November 15, 2026
+
+Implemented the five improvements from the recorded-demo review: operation-aware instructions, a compact reserved HUD strip, persistent accepted-action feedback, filtered scaling, and lighter preview updates.
+
+- All 132 automated tests passed across 14 source files; TypeScript, production bundling, and local-asset verification passed.
+- Three full gesture-pipeline integration tests at simulated 13/30/60 FPS use real 21-landmark inputs, recognition, stable target activation, smoothed scaling, the transaction controller, and actual Manifold geometry. Each completes Create Box → Scale → Create Cylinder → Subtract → Undo → Move draft → Cancel. Geometry volume is checked against the expected through-hole.
+- Tests found and fixed a release-frame issue: the first raw opening sample could previously change scale before the two-observation release latch. Scale now freezes exactly on that first opening and requires a confirmed release before re-gripping.
+- Ten consecutive production-browser pointer/keyboard demo runs completed with exact 1.40× scale commits, correct Boolean results, Undo, Cancel, and no console errors. A desktop Reset hit-area overlap and AST/Commit overlap found during QA were fixed and the ten-run check repeated successfully.
+- A developer-only browser fixture verified active Scale instructions, held-state Commit guidance, confirmation priority over new tracking context, stable object buttons and render resources through 100 updates, and no HUD/canvas overlap. The HUD occupied a reserved 50 px strip in desktop testing and 48 px at 768 px width, with no horizontal overflow. [Fixture screenshot](media/polish-ui-fixture.jpg) explicitly identifies its simulated input and does not claim a live-hand test.
+- Preview scheduling tests verify immediate transform updates, coalesced inspector work, no preview persistence, and cancellation of stale queued text on commit/cancel. Real Three.js object tests verify no geometry/material/outline replacement during 100 preview updates.
+- Startup recovery tests protect the original saved project when restoration fails. Camera stop/error clears transient manipulation guidance.
+
+[Polish browser measurements](media/polish-measurements.json) retain the actual samples and update/allocation counters. In that camera-off ten-run session, 40 preview transforms produced 9 coalesced inspector updates. Boolean p95 was 5.98 ms over ten samples; frame-interval p50/p95 was 6.07/6.82 ms. These are observations from this run, not a controlled before/after speedup comparison or a physical gesture-latency measurement.
+
+The presenter's supplied recording confirms the pre-polish gesture workflow succeeds. Prototype 03 was tested through automated landmark sequences and browser interaction; a fresh physical gesture rehearsal of this polished build remains a presenter check.
 

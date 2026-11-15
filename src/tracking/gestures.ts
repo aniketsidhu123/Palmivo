@@ -186,6 +186,8 @@ export class GestureRecognizer {
       bothPinched: trackingReady && this.dominant.pinched && this.other.pinched,
       separation, trackingReady, trackingLost: lost, otherOpen,
       dominantRatio, otherRatio, pinchClosing: trackingReady && dominantRatio !== undefined && dominantRatio < this.profile.pinchClose,
+      pinchOpening: trackingReady && this.dominant.pinched && dominantRatio !== undefined && dominantRatio >= this.profile.pinchOpen,
+      otherPinchOpening: trackingReady && this.other.pinched && otherRatio !== undefined && otherRatio >= this.profile.pinchOpen,
       rawCursor: valid && this.rawCursor ? { ...this.rawCursor } : undefined,
     };
   }

@@ -1,4 +1,5 @@
 import type { ControllerState, Draft, Tool } from '../shared/types';
+import { CONFIRMATION_DURATION_MS, manipulationInstruction, resolveInstruction, type ManipulationFeedback } from './feedback';
 import './style.css';
 import './responsive.css';
 import './gesture-controls.css';
@@ -39,6 +40,10 @@ export interface WorkspaceUI {
   tuningHover: HTMLSelectElement;
   testGestureButton: HTMLButtonElement;
   update(state: ControllerState): void;
+  updatePreview(state: ControllerState): void;
+  confirmAction(message: string, button?: HTMLButtonElement | null): void;
+  setManipulationFeedback(kind: 'scale' | 'move', phase: 'ready' | 'active' | 'held' | 'paused', value?: number): void;
+  clearManipulationFeedback(): void;
   setStatus(text: string): void;
   setTracking(text: string): void;
   setMetrics(metrics: Record<string, string>): void;
@@ -62,7 +67,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   root.innerHTML = `
     <header class="app-header">
       <a class="brand" href="#" aria-label="SignToAST workspace"><span class="brand-mark"><i></i><i></i><i></i></span><span>sign<span class="brand-to">to</span>ast<span class="brand-period">.</span></span></a>
-      <div class="header-context"><span class="header-divider"></span><span>SPATIAL COMPILER</span><span class="version-tag">PROTOTYPE / 02</span></div>
+      <div class="header-context"><span class="header-divider"></span><span>SPATIAL COMPILER</span><span class="version-tag">PROTOTYPE / 03</span></div>
       <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>All computation stays here</span><button id="export-project" class="quiet-button">${icon('export')}<span>Export project</span></button></div>
     </header>
     <main class="workspace">
@@ -109,7 +114,13 @@ export function createUI(root: HTMLElement): WorkspaceUI {
       <div class="page-footnote"><span>Spatial gesture prototype. Scene dimensions are illustrative, not physical measurements.</span><span>COMPILE SOMETHING TANGIBLE.</span></div>
     </main><div id="gesture-cursor" class="gesture-cursor" hidden><span></span></div>`;
 
-  const q = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
+  const references = new Map<string, HTMLElement>();
+  const q = <T extends HTMLElement>(selector: string): T => {
+    let element = references.get(selector);
+    if (!element) { element = root.querySelector<HTMLElement>(selector)!; references.set(selector, element); }
+    return element as T;
+  };
+  const text = (element: HTMLElement, value: string) => { if (element.textContent !== value) element.textContent = value; };
   const paletteButtons = new Map<Tool, HTMLButtonElement>();
   root.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach(button => paletteButtons.set(button.dataset.tool as Tool, button));
   const video = q<HTMLVideoElement>('#camera');
@@ -118,8 +129,11 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   hud.className = 'gesture-hud';
   hud.hidden = true;
   hud.setAttribute('aria-label', 'Live gesture input');
-  hud.innerHTML = '<div class="gesture-hud-heading"><span><i></i>GESTURE INPUT</span><span id="hud-hands">—</span></div><strong id="hud-gate">Show your pointer hand.</strong><span id="hud-pinch">Waiting for hand tracking</span><div class="gesture-hud-target"><span id="hud-target">No target</span><div class="gesture-progress" id="hud-progress"><i></i></div></div>';
-  q('.viewport-wrap').append(hud);
+  hud.innerHTML = '<div class="gesture-hud-gate"><span><i></i>INPUT</span><strong id="hud-gate">Show your pointer hand.</strong></div><div class="gesture-hud-target"><span id="hud-target">No target</span><div class="gesture-progress" id="hud-progress"><i></i></div></div>';
+  q('.stage-toolbar').after(hud);
+  const booleanSummary = document.createElement('div');
+  booleanSummary.className = 'boolean-summary'; booleanSummary.hidden = true;
+  q('.selected-panel').append(booleanSummary);
   const tuningActivation = q<HTMLSelectElement>('#gesture-activation');
   tuningActivation.addEventListener('change', () => {
     q('#activation-help').textContent = tuningActivation.value === 'dwell' ? 'Dwell assist activates a hovered button after an intentional hold. Commit still requires choosing its button.' : 'Hover until the button is ready, then pinch. Release fully before the next click.';
@@ -127,6 +141,48 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   const cursor = q('#gesture-cursor');
   let currentState: ControllerState | null = null;
   let selectedTool: Tool | null = null;
+  let confirmation: { message: string; until: number; button: HTMLButtonElement | null } | null = null;
+  let confirmationTimer: ReturnType<typeof setTimeout> | null = null;
+  let manipulation: ManipulationFeedback | null = null;
+  let feedbackGate = 'Show your pointer hand.';
+  const objectButtons = new Map<string, { button: HTMLButtonElement; color: HTMLElement; name: HTMLElement; role: HTMLElement }>();
+  const baseInstruction = (): string => {
+    const state = currentState;
+    if (!state) return 'Choose a primitive to begin.';
+    if (state.draft?.kind === 'subtract') {
+      const draft = state.draft;
+      const target = state.scene.solids.find(s => s.id === draft.targetId)?.name ?? draft.targetId;
+      const cutter = state.scene.solids.find(s => s.id === draft.cutterId)?.name;
+      return cutter ? `Cutter selected: ${cutter}. Choose Commit to subtract from ${target}.` : `Target: ${target}. Select a different solid as the Cutter.`;
+    }
+    const fallbackHint = state.draft?.kind === 'scale' ? ' Mouse: scroll, or use + / −.' : state.draft?.kind === 'move' ? ' Mouse: drag in the viewport.' : '';
+    return (state.message || (state.draft ? 'Adjust your preview, then Commit or Cancel.' : 'Choose a primitive to begin.')) + fallbackHint;
+  };
+  const renderPrimary = () => {
+    const context = manipulationInstruction(manipulation, currentState?.draft?.kind);
+    const common = { confirmation, now: Date.now(), context };
+    const primary = resolveInstruction({ ...common, base: baseInstruction() });
+    text(q('#instruction'), primary.message);
+    text(q('#hud-gate'), resolveInstruction({ ...common, base: feedbackGate }).message);
+    text(q('#stage-state'), resolveInstruction({ ...common, context: null, base: currentState?.busy ? 'Compiling solid geometry…' : currentState?.paused ? 'Interaction paused' : currentState?.draft ? 'Preview only · commit to apply' : 'Ready for your next command' }).message);
+    q('.instruction-card').classList.toggle('has-confirmation', primary.confirmed);
+    hud.classList.toggle('has-confirmation', primary.confirmed);
+    const hint = q('.gesture-hint');
+    hint.hidden = !!context;
+  };
+  const updatePreviewFields = (state: ControllerState) => {
+    currentState = state;
+    const selected = state.scene.solids.find(solid => solid.id === state.selectedId);
+    const position = state.draft?.kind === 'move' ? state.draft.position : selected?.position;
+    const scale = state.draft?.kind === 'scale' ? state.draft.uniformScale : selected?.scale;
+    text(q('#selected-position'), position ? position.map(value => value.toFixed(0)).join(' / ') : '— / — / —');
+    text(q('#selected-scale'), scale !== undefined ? `${scale.toFixed(2)}×` : '—');
+    const ast = state.draft ? draftAST(state.draft) : state.lastCommand?.ast;
+    const code = q('#ast-code');
+    const nextCode = ast ? JSON.stringify(ast, null, 2) : '{\n  // Your gestures become\n  // structured instructions.\n}';
+    if (code.textContent !== nextCode) { const scrollTop = code.scrollTop; code.textContent = nextCode; code.scrollTop = scrollTop; }
+    renderPrimary();
+  };
   const updateButtonStates = () => {
     if (!currentState) return;
     const state = currentState;
@@ -137,7 +193,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
       button.setAttribute('aria-pressed', String(tool === selectedTool));
     }
     const pause = paletteButtons.get('pause')!;
-    pause.querySelector('span')!.textContent = state.paused ? 'Resume' : 'Pause';
+    text(pause.querySelector<HTMLElement>('span')!, state.paused ? 'Resume' : 'Pause');
   };
 
   return {
@@ -156,57 +212,83 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     update(state) {
       currentState = state;
       updateButtonStates();
-      q('#scene-revision').textContent = `REV ${String(state.scene.revision).padStart(3, '0')}`;
-      q('#solid-count').textContent = `${state.scene.solids.length} solid${state.scene.solids.length === 1 ? '' : 's'}`;
+      text(q('#scene-revision'), `REV ${String(state.scene.revision).padStart(3, '0')}`);
+      text(q('#solid-count'), `${state.scene.solids.length} solid${state.scene.solids.length === 1 ? '' : 's'}`);
       q('#empty-scene').hidden = !!(state.scene.solids.length || state.draft);
       q('#draft-badge').hidden = !state.draft;
       q('#draft-badge').classList.toggle('is-busy', state.busy);
-      q('#stage-state').textContent = state.busy ? 'Compiling solid geometry…' : state.paused ? 'Interaction paused' : state.draft ? 'Preview only · commit to apply' : 'Ready for your next command';
-      const fallbackHint = state.draft?.kind === 'scale' ? ' Mouse: scroll, or use + / −.' : state.draft?.kind === 'move' ? ' Mouse: drag in the viewport.' : '';
-      q('#instruction').textContent = (state.message || (state.draft ? 'Adjust your preview, then Commit or Cancel.' : 'Choose a primitive to begin.')) + fallbackHint;
       const selected = state.scene.solids.find(solid => solid.id === state.selectedId);
-      q('#selection-label').textContent = selected ? selected.name.toUpperCase() : 'NO SELECTION';
+      text(q('#selection-label'), selected ? selected.name.toUpperCase() : 'NO SELECTION');
       const objectList = q('#scene-objects');
-      objectList.replaceChildren();
-      for (const solid of state.scene.solids) {
-        const button = document.createElement('button');
-        button.className = `scene-object${solid.id === state.selectedId ? ' is-selected' : ''}`;
-        button.dataset.solidId = solid.id;
-        button.dataset.action = 'solid';
-        button.disabled = state.busy || state.paused || !!state.draft && state.draft.kind !== 'subtract';
-        button.setAttribute('aria-pressed', String(solid.id === state.selectedId));
-        const color = document.createElement('i'); color.style.background = solid.color;
-        const name = document.createElement('span'); name.textContent = solid.name;
-        const role = document.createElement('small'); role.textContent = state.draft?.kind === 'subtract' ? solid.id === state.draft.targetId ? 'TARGET' : solid.id === state.draft.cutterId ? 'CUTTER' : '' : solid.id === state.selectedId ? 'SELECTED' : '';
-        button.append(color, name, role); objectList.append(button);
+      const ids = new Set(state.scene.solids.map(solid => solid.id));
+      for (const [id, entry] of objectButtons) {
+        if (!ids.has(id)) { entry.button.remove(); objectButtons.delete(id); }
       }
-      q('#selected-name').textContent = selected?.name ?? 'Nothing selected';
-      q('#selected-type').textContent = selected?.recipe.kind.toUpperCase() ?? '—';
-      const position = state.draft?.kind === 'move' ? state.draft.position : selected?.position;
-      const scale = state.draft?.kind === 'scale' ? state.draft.uniformScale : selected?.scale;
-      q('#selected-position').textContent = position ? position.map(value => value.toFixed(0)).join(' / ') : '— / — / —';
-      q('#selected-scale').textContent = scale !== undefined ? `${scale.toFixed(2)}×` : '—';
+      for (const solid of state.scene.solids) {
+        let entry = objectButtons.get(solid.id);
+        if (!entry) {
+          const button = document.createElement('button');
+          button.className = 'scene-object'; button.dataset.solidId = solid.id; button.dataset.action = 'solid';
+          const color = document.createElement('i'), name = document.createElement('span'), role = document.createElement('small');
+          button.append(color, name, role); objectList.append(button);
+          entry = { button, color, name, role }; objectButtons.set(solid.id, entry);
+        }
+        const { button, color, name, role } = entry;
+        button.classList.toggle('is-selected', solid.id === state.selectedId);
+        button.disabled = state.busy || state.paused || !!state.draft && state.draft.kind !== 'subtract';
+        const pressed = String(solid.id === state.selectedId);
+        if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed', pressed);
+        if (color.dataset.color !== solid.color) { color.style.background = solid.color; color.dataset.color = solid.color; }
+        text(name, solid.name);
+        text(role, state.draft?.kind === 'subtract' ? solid.id === state.draft.targetId ? 'TARGET' : solid.id === state.draft.cutterId ? 'CUTTER' : '' : solid.id === state.selectedId ? 'SELECTED' : '');
+      }
+      const subtract = state.draft?.kind === 'subtract' ? state.draft : null;
+      const target = subtract ? state.scene.solids.find(solid => solid.id === subtract.targetId) : null;
+      const cutter = subtract ? state.scene.solids.find(solid => solid.id === subtract.cutterId) : null;
+      text(q('.selected-panel .section-heading h3'), subtract ? 'Boolean operands' : 'Selected solid');
+      text(q('#selected-name'), subtract ? `Target: ${target?.name ?? '—'}` : selected?.name ?? 'Nothing selected');
+      text(q('#selected-type'), subtract ? 'TARGET − CUTTER' : selected?.recipe.kind.toUpperCase() ?? '—');
+      q('.property-grid').hidden = !!subtract;
+      booleanSummary.hidden = !subtract;
+      text(booleanSummary, subtract ? `Cutter: ${cutter?.name ?? 'Choose a different solid'}` : '');
+      booleanSummary.classList.toggle('has-cutter', !!cutter);
       q('#pipeline-draft').classList.toggle('pipeline-active', !!state.draft);
       q('#pipeline-ast').classList.toggle('pipeline-active', !!state.lastCommand && !state.draft);
       const ast = state.draft ? draftAST(state.draft) : state.lastCommand?.ast;
-      if (ast) q('#ast-code').textContent = JSON.stringify(ast, null, 2);
-      else q('#ast-code').textContent = '{\n  // Your gestures become\n  // structured instructions.\n}';
-      q('#ast-status').textContent = state.busy ? 'COMPILING' : state.draft ? 'DRAFT' : ast ? 'COMMITTED' : 'NO COMMAND';
+      text(q('#ast-status'), state.busy ? 'COMPILING' : state.draft ? 'DRAFT' : ast ? 'COMMITTED' : 'NO COMMAND');
       q('#ast-status').classList.toggle('is-draft', !!state.draft);
+      updatePreviewFields(state);
     },
-    setStatus(text) { q('#runtime-status').textContent = text; },
-    setTracking(text) {
-      q('#tracking-status').textContent = text;
+    updatePreview(state) { updatePreviewFields(state); },
+    confirmAction(message, button = null) {
+      if (confirmationTimer) clearTimeout(confirmationTimer);
+      confirmation?.button?.classList.remove('action-confirmed');
+      confirmation = { message, until: Date.now() + CONFIRMATION_DURATION_MS, button };
+      if (button) { button.classList.remove('action-confirmed'); void button.offsetWidth; button.classList.add('action-confirmed'); }
+      renderPrimary();
+      confirmationTimer = setTimeout(() => {
+        confirmation?.button?.classList.remove('action-confirmed');
+        confirmation = null; confirmationTimer = null; renderPrimary();
+      }, CONFIRMATION_DURATION_MS);
+    },
+    setManipulationFeedback(kind, phase, value) {
+      if (manipulation?.kind === kind && manipulation.phase === phase && manipulation.value === value) return;
+      manipulation = { kind, phase, value }; renderPrimary();
+    },
+    clearManipulationFeedback() { manipulation = null; renderPrimary(); },
+    setStatus(value) { text(q('#runtime-status'), value); },
+    setTracking(value) {
+      text(q('#tracking-status'), value);
       const badge = q('#tracking-badge');
-      const normalized = text.toLowerCase();
-      badge.textContent = normalized.includes('lost') || normalized.includes('missing') ? 'TRACKING LOST' : normalized.includes('error') || normalized.includes('denied') ? 'UNAVAILABLE' : video.srcObject ? 'LIVE TRACKING' : 'CAMERA OFF';
+      const normalized = value.toLowerCase();
+      text(badge, normalized.includes('lost') || normalized.includes('missing') ? 'TRACKING LOST' : normalized.includes('error') || normalized.includes('denied') ? 'UNAVAILABLE' : video.srcObject ? 'LIVE TRACKING' : 'CAMERA OFF');
       badge.classList.toggle('is-live', !!video.srcObject);
     },
     setMetrics(metrics) {
       const aliases: Record<string, string> = { cameraFPS: 'camera', trackingFPS: 'tracking', renderFPS: 'render', fps: 'render', landmarkMs: 'landmark', inferenceMs: 'landmark', compilerMs: 'compiler', rulesMs: 'compiler', geometryMs: 'geometry', landmarks: 'landmark', rules: 'compiler' };
       for (const [key, value] of Object.entries(metrics)) {
-        const element = root.querySelector<HTMLElement>(`[data-metric="${aliases[key] ?? key}"]`);
-        if (element) element.textContent = value;
+        const element = q(`[data-metric="${aliases[key] ?? key}"]`);
+        if (element) text(element, value);
       }
     },
     setAssetsReady(ready) {
@@ -236,25 +318,26 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     },
     setSelectedTool(tool) { selectedTool = tool; updateButtonStates(); },
     setGestureFeedback(feedback) {
-      q('#gesture-hands').textContent = feedback.hands;
-      q('#gesture-pinch').textContent = feedback.pinch;
-      q('#gesture-gate').textContent = feedback.gate;
-      q('#gesture-target').textContent = feedback.target;
+      text(q('#gesture-hands'), feedback.hands);
+      text(q('#gesture-pinch'), feedback.pinch);
+      text(q('#gesture-gate'), feedback.gate);
+      text(q('#gesture-target'), feedback.target);
+      feedbackGate = feedback.gate;
       const progress = Math.max(0, Math.min(1, Number.isFinite(feedback.progress) ? feedback.progress : 0));
       const element = q('#gesture-progress');
-      element.setAttribute('aria-valuenow', String(Math.round(progress * 100)));
-      element.querySelector<HTMLElement>('i')!.style.width = `${progress * 100}%`;
+      const progressValue = String(Math.round(progress * 100));
+      if (element.getAttribute('aria-valuenow') !== progressValue) element.setAttribute('aria-valuenow', progressValue);
+      const progressWidth = `${Math.round(progress * 1000) / 10}%`;
+      if (q('#gesture-progress i').style.width !== progressWidth) q('#gesture-progress i').style.width = progressWidth;
       element.classList.toggle('is-ready', progress >= 1);
-      q('#hud-hands').textContent = feedback.hands;
-      q('#hud-gate').textContent = feedback.gate;
-      q('#hud-pinch').textContent = feedback.pinch;
-      q('#hud-target').textContent = feedback.target;
+      text(q('#hud-target'), feedback.target);
       const hudProgress = q('#hud-progress');
-      hudProgress.querySelector<HTMLElement>('i')!.style.width = `${progress * 100}%`;
+      if (q('#hud-progress i').style.width !== progressWidth) q('#hud-progress i').style.width = progressWidth;
       hudProgress.classList.toggle('is-ready', progress >= 1);
+      renderPrimary();
     },
     setGestureTestCount(count) {
-      q('#gesture-test-count').textContent = `${count} test click${count === 1 ? '' : 's'}`;
+      text(q('#gesture-test-count'), `${count} test click${count === 1 ? '' : 's'}`);
       q('#test-gesture').classList.toggle('has-clicked', count > 0);
     },
   };

@@ -199,4 +199,22 @@ describe('temporal gesture recognizer', () => {
     expect(closing.rawCursor).toBeDefined();
     expect(recognizer.process(frame(332, 0.3)).pinchStarted).toBe(true);
   });
+  it('exposes the first raw opening observation before dominant release is latched', () => {
+    const recognizer = new GestureRecognizer(); warm(recognizer);
+    recognizer.process(frame(316, 0.2)); recognizer.process(frame(332, 0.2));
+    const opening = recognizer.process(frame(348, 0.7));
+    expect(opening.dominantPinched).toBe(true); expect(opening.pinchReleased).toBe(false);
+    expect(opening.pinchOpening).toBe(true); expect(opening.otherPinchOpening).toBe(false);
+    const released = recognizer.process(frame(364, 0.7));
+    expect(released.dominantPinched).toBe(false); expect(released.pinchReleased).toBe(true);
+    expect(released.pinchOpening).toBe(false);
+  });
+  it('exposes raw offhand opening while dual-pinch remains latched for one observation', () => {
+    const recognizer = new GestureRecognizer(); warm(recognizer);
+    recognizer.process(frame(316, 0.2, 0.2)); recognizer.process(frame(332, 0.2, 0.2));
+    const opening = recognizer.process(frame(348, 0.2, 0.7));
+    expect(opening.bothPinched).toBe(true); expect(opening.otherPinchOpening).toBe(true);
+    expect(opening.pinchOpening).toBe(false);
+    expect(recognizer.process(frame(364, 0.2, 0.7)).bothPinched).toBe(false);
+  });
 });

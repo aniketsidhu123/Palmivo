@@ -67,4 +67,45 @@ describe('scene compiler and transaction controller',()=>{
     const controller=new Controller(adapter()); await add(controller); const original=controller.exportDocument(); const invalid=controller.exportDocument(); invalid.schemaVersion=2 as 1;
     expect(await controller.restore(invalid)).toBe(false); expect(controller.exportDocument()).toEqual(original);
   });
+  it('does not publish repeated Move samples within the same snapped cell', async () => {
+    const controller = new Controller(adapter()); await add(controller); controller.beginMove();
+    const changed = vi.fn(); const unsubscribe = controller.subscribe(changed); changed.mockClear();
+    controller.updateMove([0.1, -0.1, 0]);
+    expect(changed).not.toHaveBeenCalled();
+    controller.updateMove([1.2, 2.1, 0]);
+    expect(changed).toHaveBeenCalledTimes(1);
+    controller.updateMove([1.4, 2.4, 0]); controller.updateMove([1, 2, 0]);
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(controller.state.draft).toMatchObject({ position: [1, 2, 0] });
+    expect(controller.state.scene.solids[0].position).toEqual([0, 0, 0]); unsubscribe();
+  });
+  it('does not publish effectively unchanged or repeatedly clamped Scale samples', async () => {
+    const controller = new Controller(adapter()); await add(controller); controller.beginScale();
+    const changed = vi.fn(); const unsubscribe = controller.subscribe(changed); changed.mockClear();
+    controller.updateScale(1); controller.updateScale(1 + 0.0000005);
+    expect(changed).not.toHaveBeenCalled();
+    controller.updateScale(1.4); expect(changed).toHaveBeenCalledTimes(1);
+    controller.updateScale(1.4000005); expect(changed).toHaveBeenCalledTimes(1);
+    controller.updateScale(100); expect(changed).toHaveBeenCalledTimes(2);
+    controller.updateScale(5); expect(changed).toHaveBeenCalledTimes(2);
+    expect(controller.state.draft).toMatchObject({ uniformScale: 2 }); unsubscribe();
+  });
+  it('does not republish an already selected solid or cutter', async () => {
+    const controller = new Controller(adapter()); const box = await add(controller); const cylinder = await add(controller, 'Cylinder');
+    const changed = vi.fn(); const unsubscribe = controller.subscribe(changed); changed.mockClear();
+    controller.select(cylinder); expect(changed).not.toHaveBeenCalled();
+    controller.select(box); expect(changed).toHaveBeenCalledTimes(1);
+    controller.select(box); expect(changed).toHaveBeenCalledTimes(1);
+    controller.beginSubtract(); controller.chooseCutter(cylinder); changed.mockClear();
+    controller.chooseCutter(cylinder); expect(changed).not.toHaveBeenCalled();
+    expect(controller.state.draft).toMatchObject({ targetId: box, cutterId: cylinder }); unsubscribe();
+  });
+  it('keeps exact Cancel and Undo transforms after deduplicated preview updates', async () => {
+    const controller = new Controller(adapter()); await add(controller);
+    controller.beginMove(); controller.updateMove([8.1, -3.2, 0]); controller.updateMove([8.4, -3.4, 0]); controller.cancel();
+    expect(controller.state.scene.solids[0].position).toEqual([0, 0, 0]);
+    controller.beginScale(); controller.updateScale(1.4); controller.updateScale(1.4000005); await controller.commit();
+    expect(controller.state.scene.solids[0].scale).toBe(1.4);
+    controller.undo(); expect(controller.state.scene.solids[0].scale).toBe(1);
+  });
 });
