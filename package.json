@@ -1,0 +1,13 @@
+{
+  "name": "signtoast", "version": "1.0.0", "private": true, "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "node scripts/prepare-assets.mjs && tsc --noEmit && vite build && node scripts/verify-assets.mjs",
+    "test": "vitest run",
+    "start": "node scripts/serve.mjs",
+    "assets": "node scripts/prepare-assets.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "dependencies": {"@mediapipe/tasks-vision": "0.10.32", "manifold-3d": "3.3.2", "three": "0.181.1"},
+  "devDependencies": {"@types/three": "0.181.0", "esbuild": "0.25.12", "typescript": "5.9.3", "vite": "7.2.2", "vitest": "3.2.4"}
+}

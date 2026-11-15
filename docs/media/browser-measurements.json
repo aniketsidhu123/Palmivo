@@ -1,0 +1,33 @@
+{
+  "capturedAt": "2026-11-14T16:54:46.437Z",
+  "backend": "uninitialized",
+  "camera": {
+    "cameraFps": 0,
+    "trackingFps": 0,
+    "droppedFrames": 0
+  },
+  "recognition": "MediaPipe + temporal gesture rules",
+  "notes": "Browser timings; not physical motion-to-action latency.",
+  "metrics": {
+    "render_frame_ms": {
+      "samples": 1800,
+      "p50": 6.070000000006985,
+      "p95": 6.590000000025611
+    },
+    "boolean_ms": {
+      "samples": 12,
+      "p50": 11.079999923706055,
+      "p95": 12.329999923706055
+    },
+    "primitive_ms": {
+      "samples": 22,
+      "p50": 11.100000023841858,
+      "p95": 12.47000002861023
+    },
+    "command_completion_ms": {
+      "samples": 44,
+      "p50": 12.725000023841858,
+      "p95": 14.559999942779541
+    }
+  }
+}

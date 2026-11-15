@@ -1,0 +1,118 @@
+/* Explicit desktop placement prevents automatic packing from swapping viewport and inspector. */
+.tool-rail{grid-column:1;grid-row:1}
+.stage-shell{grid-column:2;grid-row:1}
+.inspector{grid-column:3;grid-row:1}
+.tracking-panel{grid-column:1 / span 2;grid-row:2}
+.runtime-panel{grid-column:3;grid-row:2}
+
+@media(max-width:850px){
+ body{min-width:0}
+ .app-header{height:66px;padding:0 18px;gap:12px}
+ .brand{font-size:25px;gap:9px}
+ .brand-mark{transform:scale(.9) rotate(-12deg)}
+ .header-context{display:none}
+ .header-actions{margin-left:auto}
+ .quiet-button{padding:9px;font-size:10px;gap:6px}
+ .workspace{padding:24px 16px 16px;width:100%;max-width:100%}
+ .workspace-heading{align-items:flex-start;gap:12px;margin-bottom:20px}
+ .workspace-heading h1{font-size:27px;line-height:1.15;letter-spacing:-1px;max-width:260px}
+ .eyebrow{font-size:7px;line-height:1.5;letter-spacing:1px;max-width:235px}
+ .readiness{gap:7px;align-items:center;margin-top:15px;flex-shrink:0}
+ .readiness-icon{width:23px;height:23px;font-size:13px}
+ .readiness strong{font-size:8px;max-width:75px;line-height:1.4}
+ .workspace-grid{grid-template-columns:minmax(0,1fr);grid-template-rows:auto 430px auto auto auto;gap:16px;width:100%}
+ .tool-rail,.stage-shell,.inspector,.tracking-panel,.runtime-panel{grid-column:1;grid-row:auto;min-width:0}
+ .tool-rail{display:block;padding:0}
+ .rail-label{padding:0 0 8px;font-size:8px}
+ .rail-label>span{display:inline}
+ .tool-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+ .tool-divider{display:none}
+ .tool-button{min-height:43px;font-size:10px;gap:6px;padding:8px 7px;justify-content:center;background:#eceee3;border-color:#dce1d2}
+ .tool-button .icon{width:17px;height:17px}
+ .tool-button kbd{display:none}
+ .rail-bottom{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:7px 0 0;padding:0}
+ .pause-button{width:auto;min-height:31px;padding:5px 10px;background:transparent;font-size:9px;justify-content:flex-start}
+ .pause-button .icon{width:13px;height:13px}
+ .reset-button{padding:7px 0;font-size:9px}
+ .stage-shell{width:100%;height:430px}
+ .stage-toolbar{padding:0 12px;gap:7px;min-height:42px}
+ .stage-toolbar>div{gap:6px}
+ .stage-options{font-size:8px}
+ .stage-revision{font-size:7px;margin-left:1px}
+ .stage-bottom{padding:0 12px;min-height:34px;font-size:8px;gap:10px}
+ .stage-bottom>span:last-child{font-size:6px}
+ .viewport-label{left:13px;font-size:6px;letter-spacing:.7px}
+ .viewport-label>span:last-child{margin-left:7px}
+ .empty-scene{top:35%}
+ .empty-scene h2{font-size:17px}
+ .empty-scene p{font-size:9px}
+ .empty-scene>span:last-child{font-size:6px;letter-spacing:.9px}
+ .scene-objects{left:11px;max-width:154px}
+ .scene-object{min-height:36px;font-size:9px;padding:8px}
+ .draft-badge{right:12px;font-size:6px;gap:5px;padding:6px}
+ .inspector{padding:20px;display:grid;grid-template-columns:minmax(0,1fr);gap:0}
+ .inspector-title h2{font-size:14px}
+ .pipeline{font-size:8px;max-width:360px;margin:18px 0}
+ .instruction-card{padding:14px}
+ .instruction-caption{font-size:9px}
+ .instruction-card p{font-size:12px;line-height:1.6;min-height:0;margin:9px 0 11px}
+ .gesture-hint{font-size:9px}
+ .selected-panel{padding:19px 0}
+ .section-heading h3{font-size:11px}
+ .selected-name{font-size:16px;margin:13px 0}
+ .property-grid{gap:10px}
+ .property-grid>span{font-size:8px}
+ .property-grid strong{font-size:10px}
+ .ast-panel{padding-top:18px;min-height:0}
+ .ast-status{font-size:7px!important}
+ .code-window{min-height:130px}
+ .code-toolbar{padding:8px 10px;font-size:8px}
+ .code-window pre{font-size:10px;line-height:1.7;padding:14px;max-height:240px}
+ .commit-actions{margin-top:18px;gap:10px}
+ .commit-actions button{min-height:44px;font-size:12px;padding:0 13px}
+ .commit-actions button>span{font-size:9px}
+ .commit-actions .icon{width:18px;height:18px}
+ .commit-note{font-size:10px;line-height:1.5;margin-top:12px}
+ .tracking-panel{padding:0;gap:15px;align-items:flex-start;flex-wrap:wrap}
+ .camera-tile{flex:0 0 140px;height:130px}
+ .tracking-content{flex:1 1 210px;padding-top:2px;min-width:0}
+ .tracking-content .section-heading h3{font-size:12px}
+ .tracking-badge{font-size:6px!important}
+ .tracking-content>p{font-size:10px;line-height:1.5;min-height:0;margin:9px 0 12px}
+ .tracking-controls{gap:8px;flex-wrap:wrap}
+ .tracking-controls button{font-size:10px;min-height:38px;padding:8px 10px}
+ .dominant-select{display:flex;font-size:6px;margin-left:0}
+ .dominant-select select{font-size:11px}
+ .calibration-status{font-size:8px!important;line-height:1.6!important}
+ .runtime-panel{padding:18px;border:1px solid #dee3d3;border-radius:6px;background:#eef1e5}
+ .runtime-panel .section-heading h3{font-size:9px}
+ .runtime-panel>strong{font-size:15px;line-height:1.4;margin:10px 0}
+ .runtime-panel>p{font-size:10px;max-width:none;line-height:1.6}
+ .runtime-caption{font-size:7px;margin-top:8px}
+ .diagnostics{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 9px;margin-top:22px;padding:15px 0 17px}
+ .diagnostic-label{grid-column:1 / -1;font-size:8px;letter-spacing:.7px}
+ .metric{padding-left:12px;min-height:31px}
+ .metric>span{font-size:7px;margin-bottom:6px}
+ .metric>strong{font-size:11px}
+ .diagnostics>button{position:absolute;right:0;top:6px;padding:10px}
+ .page-footnote{font-size:7px;line-height:1.7;display:block}
+ .page-footnote>span{display:block}
+ .page-footnote>span:last-child{margin-top:8px;font-size:6px}
+}
+
+@media(max-width:400px){
+ .workspace{padding-left:12px;padding-right:12px}
+ .workspace-heading h1{font-size:24px;max-width:200px}
+ .readiness{gap:5px}
+ .readiness strong{max-width:58px;font-size:7px}
+ .quiet-button>span{display:none}
+ .tool-button{font-size:9px;padding:8px 3px;gap:4px}
+ .tool-button .icon{width:15px;height:15px}
+ .stage-toolbar{font-size:7px;padding:0 9px}
+ .stage-revision{display:none}
+ .stage-bottom{padding:0 9px;font-size:7px}
+ .scene-objects{max-width:140px}
+ .inspector{padding:16px}
+ .camera-tile{flex:0 0 100%;height:180px}
+ .tracking-content{flex:1 1 100%}
+}
