@@ -14,7 +14,9 @@
 
 Browser camera permission needs an ordinary click during setup. It does not have to be part of the hands-free demonstration.
 
-This Prototype 05 release targets submission on **November 16, 2026 evening**. It adds STL export and final mesh dimensions. Rehearse the fixed sequence below first; use the precise-size variation only after the default sequence is reliable. Frontend polish remains the next session's focus.
+This Prototype 06 release targets recording and submission by **November 16, 2026 afternoon**. It retains the full CAD, project, and STL workflow in the refreshed workbench. Rehearse the fixed sequence below first; use the precise-size variation only after the default sequence is reliable.
+
+Before recording, register three fresh activations on **Test click** and check that the pointer can reach the tools and Commit. Mint marks tracking/selection feedback; amber emphasizes deliberate Commit. Set the browser framing so the viewport, Commit controls, and camera preview are visible together. Keep the real tracking/backend labels visible when describing performance.
 
 ## Fixed demonstration sequence
 

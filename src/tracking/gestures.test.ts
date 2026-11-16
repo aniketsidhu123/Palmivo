@@ -218,3 +218,102 @@ describe('temporal gesture recognizer', () => {
     expect(recognizer.process(frame(364, 0.2, 0.7)).bothPinched).toBe(false);
   });
 });
+
+describe('optional one-hand dwell recognition', () => {
+  const singleFrame = (timestamp: number, ratio = 0.15, side: 'Left' | 'Right' = 'Right'): TrackingFrame => ({
+    timestamp, width: 640, height: 480, inferenceMs: 10, hands: [hand(side, ratio, 0.15)],
+  });
+  const warmSingle = (recognizer: GestureRecognizer) => [0, 100, 200, 300].forEach(time => recognizer.process(singleFrame(time)));
+
+  it('is opt-in and leaves the default two-hand requirement intact', () => {
+    const recognizer = new GestureRecognizer();
+    for (let time = 0; time <= 1000; time += 100) {
+      const output = recognizer.process(singleFrame(time));
+      expect(output.trackingReady).toBe(false); expect(output.toolbarArmed).toBe(false);
+    }
+  });
+  it('arms after 300 ms with a relaxed hand without a pinch or straight-finger requirement', () => {
+    const recognizer = new GestureRecognizer(DEFAULT_PROFILE, { singleHand: true });
+    const closed = (timestamp: number) => {
+      const sample = singleFrame(timestamp);
+      for (const index of [12, 16, 20]) sample.hands[0].landmarks[index].y = 0.7;
+      return sample;
+    };
+    for (const time of [0, 100, 200, 299]) expect(recognizer.process(closed(time)).trackingReady).toBe(false);
+    const output = recognizer.process(closed(300));
+    expect(output.trackingReady).toBe(true); expect(output.toolbarArmed).toBe(true);
+    expect(output.cursor).not.toBeNull(); expect(output.otherOpen).toBe(false);
+  });
+  it('never emits pinch edges or dual-hand manipulation when either hand changes pose', () => {
+    const recognizer = new GestureRecognizer(DEFAULT_PROFILE, { singleHand: true }); warmSingle(recognizer);
+    for (let index = 0; index < 12; index++) {
+      const sample = singleFrame(316 + index * 16, index % 2 ? 1.2 : 0.1);
+      sample.hands.push(hand('Left', 0.1, -0.15));
+      const output = recognizer.process(sample);
+      expect(output).toMatchObject({ trackingReady: true, toolbarArmed: true, dominantPinched: false,
+        otherPinched: false, bothPinched: false, pinchStarted: false, pinchReleased: false,
+        pinchClosing: false, pinchOpening: false, otherPinchOpening: false, separation: 0 });
+    }
+  });
+  it('uses the configured hand identity rather than screen position', () => {
+    const recognizer = new GestureRecognizer({ ...DEFAULT_PROFILE, dominantHand: 'Left' }, { singleHand: true });
+    for (const time of [0, 100, 200, 300]) expect(recognizer.process(singleFrame(time)).trackingReady).toBe(false);
+    for (const time of [400, 500, 600]) expect(recognizer.process(singleFrame(time, 0.1, 'Left')).trackingReady).toBe(false);
+    expect(recognizer.process(singleFrame(700, 0.1, 'Left')).toolbarArmed).toBe(true);
+  });
+  it('ignores an absent or appearing offhand but rejects ambiguous pointer identities', () => {
+    const recognizer = new GestureRecognizer(DEFAULT_PROFILE, { singleHand: true }); warmSingle(recognizer);
+    const extra = singleFrame(316); extra.hands.push(hand('Left', 0.1, -0.15));
+    expect(recognizer.process(extra).toolbarArmed).toBe(true);
+    expect(recognizer.process(singleFrame(332)).toolbarArmed).toBe(true);
+    const ambiguous = singleFrame(348); ambiguous.hands.push(hand('Right', 1.2, -0.15));
+    expect(recognizer.process(ambiguous).trackingReady).toBe(false);
+    expect(recognizer.process(singleFrame(364)).toolbarArmed).toBe(false);
+  });
+  it('requires a fresh stable 300 ms after even one missing pointer observation', () => {
+    const recognizer = new GestureRecognizer(DEFAULT_PROFILE, { singleHand: true }); warmSingle(recognizer);
+    const missing = recognizer.missing(316);
+    expect(missing.toolbarArmed).toBe(false); expect(missing.pinchReleased).toBe(false);
+    for (const time of [332, 432, 532, 631]) expect(recognizer.process(singleFrame(time)).trackingReady).toBe(false);
+    expect(recognizer.process(singleFrame(632)).toolbarArmed).toBe(true);
+  });
+  it('requires fresh stable tracking after a timestamp gap without a missing packet', () => {
+    const recognizer = new GestureRecognizer(DEFAULT_PROFILE, { singleHand: true }); warmSingle(recognizer);
+    for (const time of [600, 700, 800, 899]) expect(recognizer.process(singleFrame(time)).trackingReady).toBe(false);
+    expect(recognizer.process(singleFrame(900)).toolbarArmed).toBe(true);
+  });
+  it('rejects low-confidence, incomplete and nonfinite pointers without generating an action', () => {
+    for (const damage of [
+      (pointer: TrackedHand) => { pointer.score = 0.2; },
+      (pointer: TrackedHand) => { pointer.landmarks.pop(); },
+      (pointer: TrackedHand) => { pointer.landmarks[8].x = NaN; },
+      (pointer: TrackedHand) => { pointer.landmarks[9] = { ...pointer.landmarks[0] }; },
+    ]) {
+      const recognizer = new GestureRecognizer(DEFAULT_PROFILE, { singleHand: true }); warmSingle(recognizer);
+      const invalid = singleFrame(316); damage(invalid.hands[0]);
+      const output = recognizer.process(invalid);
+      expect(output.trackingReady).toBe(false); expect(output.toolbarArmed).toBe(false);
+      expect(output.pinchStarted).toBe(false); expect(output.pinchReleased).toBe(false);
+      expect(recognizer.process(singleFrame(332)).trackingReady).toBe(false);
+    }
+  });
+  it('rejects an abrupt identity-position jump and reacquires at the new position', () => {
+    const recognizer = new GestureRecognizer(DEFAULT_PROFILE, { singleHand: true }); warmSingle(recognizer);
+    const jumped = (timestamp: number) => ({ ...singleFrame(timestamp), hands: [hand('Right', 0.1, -0.5)] });
+    expect(recognizer.process(jumped(316)).trackingReady).toBe(false);
+    for (const time of [332, 432, 532, 631]) expect(recognizer.process(jumped(time)).trackingReady).toBe(false);
+    expect(recognizer.process(jumped(632)).toolbarArmed).toBe(true);
+  });
+  it('mode changes discard previous pinch state and require new arming in either mode', () => {
+    const recognizer = new GestureRecognizer(); warm(recognizer);
+    recognizer.process(frame(316, 0.1)); expect(recognizer.process(frame(332, 0.1)).dominantPinched).toBe(true);
+    recognizer.setSingleHand(true);
+    expect(recognizer.process(singleFrame(348))).toMatchObject({ trackingReady: false, dominantPinched: false, pinchStarted: false });
+    for (const time of [448, 548]) recognizer.process(singleFrame(time));
+    expect(recognizer.process(singleFrame(648)).toolbarArmed).toBe(true);
+    recognizer.setSingleHand(false);
+    expect(recognizer.process(frame(664)).trackingReady).toBe(false);
+    for (const time of [764, 864]) recognizer.process(frame(time));
+    expect(recognizer.process(frame(964)).toolbarArmed).toBe(true);
+  });
+});

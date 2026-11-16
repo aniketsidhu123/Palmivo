@@ -1,11 +1,13 @@
 import type { ControllerState, Draft, GeometryMesh, Tool } from '../shared/types';
 import { SIZE_PRESETS } from '../core/presets';
+import { TRANSFORM_STEPS } from '../core/transformSteps';
 import { measureSolid, type SolidMeasurements } from '../core/solidMeasurements';
 import { CONFIRMATION_DURATION_MS, manipulationInstruction, resolveInstruction, type ManipulationFeedback } from './feedback';
 import './style.css';
 import './responsive.css';
 import './gesture-controls.css';
 import './features.css';
+import './workbench.css';
 
 const icons: Record<string, string> = {
   box: '<path d="m12 3 9 5v8l-9 5-9-5V8zM3 8l9 5 9-5M12 13v8M7.5 5.5l9 5"/>',
@@ -31,6 +33,7 @@ export const icon = (name: string, className = '') => `<svg class="icon ${classN
 export interface WorkspaceUI {
   paletteButtons: Map<Tool, HTMLButtonElement>;
   sizePresetButtons: Map<string, HTMLButtonElement>;
+  transformStepButtons: Map<string, HTMLButtonElement>;
   viewportHost: HTMLElement;
   video: HTMLVideoElement;
   handCanvas: HTMLCanvasElement;
@@ -76,15 +79,15 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   root.innerHTML = `
     <header class="app-header">
       <a class="brand" href="#" aria-label="SignToAST workspace"><span class="brand-mark"><i></i><i></i><i></i></span><span>sign<span class="brand-to">to</span>ast<span class="brand-period">.</span></span></a>
-      <div class="header-context"><span class="header-divider"></span><span>SPATIAL COMPILER</span><span class="version-tag">PROTOTYPE / 05</span></div>
-      <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>All computation stays here</span><button id="open-project" class="quiet-button" title="Reopen a SignToAST project JSON">${icon('open')}<span>Open project</span></button><button id="export-project" class="quiet-button">${icon('export')}<span>Export project</span></button><input id="project-file" type="file" accept=".json,application/json" aria-label="Open SignToAST project JSON" hidden></div>
+      <div class="header-context"><span class="header-divider"></span><span>GESTURE CAD / LOCAL COMPILER</span><span class="version-tag">BUILD / 06</span></div>
+      <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>All computation stays here</span><button id="open-project" class="quiet-button" aria-label="Open project" title="Reopen a SignToAST project JSON">${icon('open')}<span>Open project</span></button><button id="export-project" class="quiet-button" aria-label="Export project">${icon('export')}<span>Export project</span></button><input id="project-file" type="file" accept=".json,application/json" aria-label="Open SignToAST project JSON" hidden></div>
     </header>
     <main class="workspace">
-      <section class="workspace-heading"><div><div class="eyebrow">CONTINUOUS INPUT. STRUCTURED OUTPUT.</div><h1>Give your ideas shape<span>.</span></h1></div><div class="readiness" id="assets-status"><span class="readiness-icon">↻</span><div><strong>Preparing local assets</strong><span>Checking geometry & tracking runtime</span></div></div></section>
+      <section class="workspace-heading"><div><div class="eyebrow">LOCAL SPATIAL WORKSPACE</div><h1>Shape with intent<span>.</span></h1></div><div class="readiness" id="assets-status"><span class="readiness-icon">↻</span><div><strong>Preparing local assets</strong><span>Checking geometry & tracking runtime</span></div></div></section>
       <div class="workspace-grid">
         <aside class="tool-rail" aria-label="CAD tools"><div class="rail-label">TOOLS <span>01—07</span></div><div class="tool-list">${toolData.map(([tool,label,key,title], i) => `${i === 2 || i === 6 ? '<div class="tool-divider"></div>' : ''}<button class="tool-button" data-tool="${tool}" title="${title}" aria-label="${title}">${icon(tool)}<span>${label}</span><kbd>${key}</kbd></button>`).join('')}</div><div class="rail-bottom"><button data-tool="pause" class="tool-button pause-button">${icon('pause')}<span>Pause</span><kbd>␣</kbd></button><button id="reset-scene" class="reset-button">${icon('reset')}Reset workspace</button></div></aside>
         <section class="stage-shell" aria-label="3D scene">
-          <div class="stage-toolbar"><div><span class="stage-dot"></span><span>UNTITLED SCENE</span><span id="scene-revision" class="stage-revision">REV 000</span></div><div class="stage-options"><span id="solid-count">0 solids</span><span class="stage-separator">/</span><span>mm</span><span class="stage-view">PERSPECTIVE</span></div></div>
+          <div class="stage-toolbar"><div><span class="stage-dot"></span><span>MODEL SPACE</span><span id="scene-revision" class="stage-revision">REV 000</span></div><div class="stage-options"><span id="solid-count">0 solids</span><span class="stage-separator">/</span><span>mm</span><span class="stage-view">PERSPECTIVE</span></div></div>
           <div class="viewport-wrap"><div id="viewport" class="viewport"></div><div class="viewport-label"><span class="corner-mark"></span>WORLD SPACE <span>XY / Z FIXED</span></div><div id="scene-objects" class="scene-objects" aria-label="Scene solids"></div><div id="empty-scene" class="empty-scene"><span class="empty-glyph">${icon('box')}</span><h2>A space for your next idea.</h2><p>Choose <strong>Box</strong> or <strong>Cylinder</strong> to start building.</p><span>GESTURE CONTROL OR MOUSE & KEYBOARD</span></div><div class="scene-axis" aria-hidden="true"><span class="axis-y">Y</span><span class="axis-x">X</span><span class="axis-z">Z</span><i></i></div><div id="draft-badge" class="draft-badge" hidden><span></span>DRAFT PREVIEW</div></div>
           <div class="stage-bottom"><span><span class="status-dot"></span><span id="stage-state">Ready for your first command</span></span><span id="selection-label">NO SELECTION</span></div>
         </section>
@@ -104,7 +107,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
             <div class="section-heading"><h3>Gesture controls</h3><span class="tuning-tag">TUNE YOUR INPUT</span></div>
             <div class="gesture-settings">
               <label for="gesture-sensitivity">Pinch sensitivity<select id="gesture-sensitivity"><option value="standard">Standard · 0.32 / 0.52</option><option value="easier" selected>Easier · 0.40 / 0.62</option><option value="precise">Precise · 0.25 / 0.42</option><option value="calibrated">Calibrated · your profile</option></select></label>
-              <label for="gesture-activation">Button activation<select id="gesture-activation"><option value="pinch">Pinch</option><option value="dwell">Dwell assist</option></select></label>
+              <label for="gesture-activation">Button activation<select id="gesture-activation"><option value="pinch">Pinch</option><option value="dwell">Dwell assist · two hands</option><option value="one-hand">One-hand dwell · no pinch</option></select></label>
               <label for="gesture-hover">Hover stability<select id="gesture-hover"><option value="350" selected>Relaxed · 350 ms</option><option value="200">Fast · 200 ms</option><option value="500">Steady · 500 ms</option></select></label>
             </div>
             <p id="activation-help" class="activation-help">Hover until the button is ready, then pinch. Release fully before the next click.</p>
@@ -133,6 +136,18 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   const paletteButtons = new Map<Tool, HTMLButtonElement>();
   root.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach(button => paletteButtons.set(button.dataset.tool as Tool, button));
   const sizePresetButtons = new Map<string, HTMLButtonElement>();
+  const transformStepButtons = new Map<string, HTMLButtonElement>();
+  const transformPanel = document.createElement('div');
+  transformPanel.className = 'transform-steps'; transformPanel.hidden = true;
+  transformPanel.setAttribute('aria-label', 'Precise preview adjustments; Commit to apply');
+  for (const step of TRANSFORM_STEPS) {
+    const button = document.createElement('button'); button.type = 'button';
+    button.className = 'transform-step'; button.dataset.transformStep = step.key;
+    button.textContent = step.label; button.setAttribute('aria-label', step.description);
+    button.title = step.description + '. Preview only; choose Commit or Cancel.';
+    transformPanel.append(button); transformStepButtons.set(step.key, button);
+  }
+  q('#export-stl').before(transformPanel);
   const presetsPanel = document.createElement('section');
   presetsPanel.className = 'size-presets'; presetsPanel.hidden = true;
   presetsPanel.setAttribute('aria-label', 'Precise creation sizes');
@@ -174,7 +189,11 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   q('.selected-panel').append(booleanSummary);
   const tuningActivation = q<HTMLSelectElement>('#gesture-activation');
   tuningActivation.addEventListener('change', () => {
-    q('#activation-help').textContent = tuningActivation.value === 'dwell' ? 'Dwell assist activates a hovered button after an intentional hold. Commit still requires choosing its button.' : 'Hover until the button is ready, then pinch. Release fully before the next click.';
+    const single = tuningActivation.value === 'one-hand';
+    paletteButtons.get('scale')!.setAttribute('aria-label', single ? 'Scale with precise preview buttons' : 'Scale with two hands or precise preview buttons');
+    paletteButtons.get('move')!.setAttribute('aria-label', single ? 'Move on the XY plane with precise preview buttons' : 'Move on the XY plane; pinch and drag, or use precise preview buttons');
+    q('#activation-help').textContent = single ? 'One hand, no pinching. Hold over a button, then move off all buttons before the next action. Use precise Scale and Move buttons; Commit remains separate.' : tuningActivation.value === 'dwell' ? 'Dwell assist activates a hovered button after an intentional hold. Commit still requires choosing its button.' : 'Hover until the button is ready, then pinch. Release fully before the next click.';
+    q('.gesture-hint').textContent = single ? 'One hand · hold · move away to rearm' : 'Open other hand · point · pinch';
   });
   const cursor = q('#gesture-cursor');
   let currentState: ControllerState | null = null;
@@ -189,6 +208,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   const baseInstruction = (): string => {
     const state = currentState;
     if (!state) return 'Choose a primitive to begin.';
+    if (tuningActivation.value === 'one-hand' && (state.draft?.kind === 'scale' || state.draft?.kind === 'move')) return 'Hold over a precise adjustment. Move off buttons to rearm. Commit applies; Cancel restores.';
     if (state.draft?.kind === 'create') return 'Choose exact sizes below, then Commit to create your solid. Cancel discards the preview.';
     if (state.draft?.kind === 'subtract') {
       const draft = state.draft;
@@ -249,6 +269,15 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     open.disabled = state.busy || !!state.draft;
     open.title = state.busy ? 'Wait for the current geometry operation to finish' : state.draft ? 'Commit or Cancel the current draft before opening a project' : 'Reopen a SignToAST project JSON';
     const stlExport = q<HTMLButtonElement>('#export-stl');
+    const transform = state.draft?.kind === 'scale' || state.draft?.kind === 'move' ? state.draft : null;
+    transformPanel.hidden = !transform;
+    transformPanel.classList.toggle('is-move', transform?.kind === 'move');
+    stlExport.hidden = !!transform;
+    for (const step of TRANSFORM_STEPS) {
+      const button = transformStepButtons.get(step.key)!;
+      button.hidden = transform?.kind !== step.kind;
+      button.disabled = !transform || state.busy || state.paused;
+    }
     stlExport.disabled = state.busy || state.paused || !!state.draft || !selectedMeasurement || selectedMeasurement.id !== state.selectedId;
     stlExport.title = state.busy ? 'Wait for geometry execution to finish' : state.draft ? 'Commit or Cancel the preview before exporting STL' : state.paused ? 'Resume editing before exporting STL' : !selectedMeasurement ? 'Select a committed solid to export' : 'Export the selected committed surface with coordinates in millimetres. Keep project JSON for editable history.';
     const create = state.draft?.kind === 'create' ? state.draft : null;
@@ -268,7 +297,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   };
 
   return {
-    paletteButtons, sizePresetButtons,
+    paletteButtons, sizePresetButtons, transformStepButtons,
     viewportHost: q('#viewport'), video,
     handCanvas: q<HTMLCanvasElement>('#hand-overlay'), cameraButton,
     calibrateButton: q<HTMLButtonElement>('#calibrate-button'),
@@ -404,7 +433,8 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     },
     setCalibration(text, step) {
       const active = step !== undefined && step >= 1;
-      q('#calibration-status').textContent = active ? `${Math.min(4, step)} / 4 · ${text}` : text;
+      const total = tuningActivation.value === 'one-hand' ? 2 : 4;
+      q('#calibration-status').textContent = active ? `${Math.min(total, step)} / ${total} · ${text}` : text;
       q('#calibration-status').classList.toggle('is-calibrating', active);
     },
     setSelectedTool(tool) { selectedTool = tool; updateButtonStates(); },

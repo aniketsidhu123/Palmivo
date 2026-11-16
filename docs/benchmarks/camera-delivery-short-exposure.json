@@ -1,0 +1,87 @@
+{
+  "mode": "minimum-30 applied + manual 15.625 ms exposure",
+  "active": false,
+  "warmupMs": 2000,
+  "measuredMs": 70494.92999999225,
+  "settings": {
+    "width": 640,
+    "height": 480,
+    "frameRate": 30,
+    "facingMode": "user",
+    "exposureMode": "manual",
+    "exposureTime": 156.25,
+    "exposureCompensation": 64,
+    "brightness": 0
+  },
+  "capabilities": {
+    "frameRate": {
+      "max": 30,
+      "min": 0
+    },
+    "width": {
+      "max": 1280,
+      "min": 1
+    },
+    "height": {
+      "max": 720,
+      "min": 1
+    },
+    "exposureMode": [
+      "continuous",
+      "manual"
+    ],
+    "exposureTime": {
+      "min": 9.765625,
+      "max": 2500,
+      "step": 9.765625
+    },
+    "exposureCompensation": {
+      "min": 0,
+      "max": 128,
+      "step": 1
+    },
+    "brightness": {
+      "min": -64,
+      "max": 64,
+      "step": 1
+    }
+  },
+  "exposureExperiment": {
+    "requested": true,
+    "requestedExposureUnits": 156.25,
+    "requestedExposureMs": 15.625,
+    "originalSettings": {
+      "exposureMode": "continuous",
+      "exposureTime": 312.5,
+      "exposureCompensation": 64,
+      "brightness": 0
+    },
+    "restoration": "restored",
+    "restoredSettings": {
+      "exposureMode": "continuous",
+      "exposureTime": 156.25,
+      "exposureCompensation": 64,
+      "brightness": 0
+    }
+  },
+  "rawState": "MediaStreamTrackProcessor active",
+  "video": {
+    "frames": 1060,
+    "fps": 15.036542344252508,
+    "intervalsMs": {
+      "samples": 1059,
+      "p50": 66.65000000000146,
+      "p95": 79.03499999999985
+    }
+  },
+  "raw": {
+    "frames": 1060,
+    "fps": 15.036542344252508,
+    "intervalsMs": {
+      "samples": 1059,
+      "p50": 64.40999999642372,
+      "p95": 80.28999999165535
+    }
+  },
+  "notes": "Camera delivery only; no landmarks, gesture inference or physical action latency. No video frames are retained. Stop restores the original exposure before releasing the camera."
+}

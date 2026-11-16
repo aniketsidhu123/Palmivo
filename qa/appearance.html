@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SignToAST — Appearance regression fixture</title>
+  <style>
+    .appearance-controls{padding:10px 18px;background:#392e20;color:#ffe2b3;font:12px Arial,sans-serif;border-bottom:1px solid #a57942;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .appearance-controls strong{flex-basis:100%;font-size:12px}
+    .appearance-controls button{border:1px solid #b09066;border-radius:3px;background:#f2e2c7;color:#342a1e;padding:7px 10px;font:12px Arial,sans-serif;min-height:30px}
+    .appearance-controls button:disabled{opacity:.45}
+    .appearance-controls output{flex-basis:100%;font:12px/1.5 Consolas,monospace;overflow-wrap:anywhere}
+  </style>
+</head>
+<body>
+  <section class="appearance-controls" aria-label="Appearance fixture controls">
+    <strong>Appearance fixture — simulated tracking states, no camera</strong>
+    <button id="appearance-empty" data-appearance="empty">Empty</button>
+    <button id="appearance-box" data-appearance="box">Box draft</button>
+    <button id="appearance-scaled" data-appearance="scaled">Scaled solid</button>
+    <button id="appearance-active" data-appearance="active">Active scale</button>
+    <button id="appearance-held" data-appearance="held">Held scale</button>
+    <button id="appearance-subtract" data-appearance="subtract">Subtract operands</button>
+    <button id="appearance-lost" data-appearance="lost">Tracking lost</button>
+    <button id="appearance-paused" data-appearance="paused">Paused</button>
+    <button id="appearance-busy" data-appearance="busy">Busy</button>
+    <button id="appearance-confirm" data-appearance="confirm">Confirmation</button>
+    <button id="appearance-hover" data-appearance="hover">Dwell ready</button>
+    <button id="appearance-preview" data-appearance="preview">100 preview samples</button>
+    <button id="appearance-review" data-appearance="review">Review project</button>
+    <output id="appearance-result" role="status" aria-live="polite">Initializing local geometry…</output>
+  </section>
+  <div id="app"></div>
+  <script type="module" src="./appearance.ts"></script>
+</body>
+</html>

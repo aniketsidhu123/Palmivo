@@ -1,17 +1,19 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { CADViewport } from './viewport';
+import { CADViewport, RENDER_BUDGET_FPS } from './viewport';
 import type { ControllerState, GeometryMesh, Solid } from '../shared/types';
 
 type Entry = { mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>; source: GeometryMesh | null; recipe: Solid['recipe'] };
-type Internals = { solids: Map<string, Entry>; solidGroup: THREE.Group; scene: THREE.Scene; outline: THREE.BoxHelper | null; outlinedMesh: THREE.Object3D | null; floor: THREE.Object3D; grid: THREE.Object3D };
+type Internals = { solids: Map<string, Entry>; solidGroup: THREE.Group; scene: THREE.Scene; outline: THREE.BoxHelper | null; outlinedMesh: THREE.Object3D | null; floor: THREE.Object3D; grid: THREE.Object3D; renderAt(time: number): void };
 
 // Exercise real scene/geometry/material behavior without constructing a WebGL renderer.
 // Renderer allocation, camera capture, and visual output remain browser-QA responsibilities.
 function viewportHarness() {
   const view = Object.create(CADViewport.prototype) as CADViewport;
   const solidGroup = new THREE.Group(), scene = new THREE.Scene(); scene.add(solidGroup);
-  Object.assign(view, { solids: new Map(), solidGroup, scene, floor: new THREE.Object3D(), grid: new THREE.Object3D(), outline: null, outlinedMesh: null, state: null, disposed: false, diagnostics: { structuralUpdates: 0, previewUpdates: 0, outlineCreations: 0, geometryCreations: 0 } });
+  const shadowMap = { autoUpdate: false, needsUpdate: true };
+  const renderer = { shadowMap, render: vi.fn(() => { shadowMap.needsUpdate = false; }) };
+  Object.assign(view, { solids: new Map(), solidGroup, scene, renderer, floor: new THREE.Object3D(), grid: new THREE.Object3D(), outline: null, outlinedMesh: null, state: null, disposed: false, lastRenderedAt: null, nextRenderTime: null, diagnostics: { structuralUpdates: 0, previewUpdates: 0, outlineCreations: 0, geometryCreations: 0, renderedFrames: 0, renderBudgetFps: RENDER_BUDGET_FPS } });
   return { view, internal: view as unknown as Internals };
 }
 function geometrySource(): GeometryMesh {
@@ -113,5 +115,57 @@ describe('allocation-bounded CAD preview updates', () => {
     state.draft = { kind: 'move', targetId: 'box-a', position: [40, 0, 0] }; view.updatePreview(state);
     expect(Math.min(...outlineX(outline!))).toBe(30);
     view.update(state, meshes); expect(geometryDispose).toHaveBeenCalledTimes(1); expect(materialDispose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('CAD render budget and cached shadows', () => {
+  it.each([30, 33, 60, 120, 165])('renders at the available rate up to 60 FPS on a %i Hz callback stream', refreshRate => {
+    const { view, internal } = viewportHarness();
+    const intervals: number[] = []; view.onFrame = elapsed => intervals.push(elapsed);
+    for (let tick = 0; tick <= refreshRate * 3; tick++) internal.renderAt(tick * 1000 / refreshRate);
+    const expected = Math.min(60, refreshRate) * 3;
+    // One initial image is drawn before the first measurable frame interval.
+    expect(intervals.length).toBeGreaterThanOrEqual(expected - 1);
+    expect(intervals.length).toBeLessThanOrEqual(expected + 1);
+    expect(view.renderer.render).toHaveBeenCalledTimes(intervals.length + 1);
+    expect(view.diagnostics.renderedFrames).toBe(intervals.length + 1);
+    expect(intervals.reduce((sum, value) => sum + value, 0)).toBeCloseTo(3000, 5);
+    if (refreshRate > 60) expect(view.diagnostics.renderedFrames).toBeLessThan(refreshRate * 3);
+  });
+
+  it('reports actual rendered intervals and draws no catch-up backlog after suspension', () => {
+    const { view, internal } = viewportHarness(); const measured = vi.fn(); view.onFrame = measured;
+    internal.renderAt(1000); internal.renderAt(1006); internal.renderAt(1012); internal.renderAt(1018);
+    expect(measured).toHaveBeenCalledOnce(); expect(measured).toHaveBeenLastCalledWith(18);
+    internal.renderAt(5000);
+    expect(measured).toHaveBeenCalledTimes(2); expect(measured).toHaveBeenLastCalledWith(3982);
+    expect(view.renderer.render).toHaveBeenCalledTimes(3);
+    internal.renderAt(5000); internal.renderAt(4999); internal.renderAt(NaN);
+    expect(view.renderer.render).toHaveBeenCalledTimes(3);
+  });
+
+  it('invalidates shadows on structural and real transform changes, then reuses static maps', () => {
+    const { view, internal, state, meshes } = fixture();
+    expect(view.renderer.shadowMap.autoUpdate).toBe(false);
+    expect(view.renderer.shadowMap.needsUpdate).toBe(true);
+    internal.renderAt(0);
+    expect(view.renderer.shadowMap.needsUpdate).toBe(false);
+    internal.renderAt(17); internal.renderAt(34);
+    expect(view.renderer.shadowMap.needsUpdate).toBe(false);
+    state.draft = { kind: 'move', targetId: 'box-a', position: [0, 0, 0] };
+    view.updatePreview(state);
+    expect(view.renderer.shadowMap.needsUpdate).toBe(false);
+    state.draft.position = [5, -40, 0]; view.updatePreview(state);
+    expect(view.renderer.shadowMap.needsUpdate).toBe(true);
+    expect(internal.floor.position.y).toBe(-51);
+    internal.renderAt(51); expect(view.renderer.shadowMap.needsUpdate).toBe(false);
+    state.draft = { kind: 'scale', targetId: 'box-a', uniformScale: 1.4 }; view.updatePreview(state);
+    expect(view.renderer.shadowMap.needsUpdate).toBe(true);
+    internal.renderAt(68); expect(view.renderer.shadowMap.needsUpdate).toBe(false);
+    view.updatePreview(state); expect(view.renderer.shadowMap.needsUpdate).toBe(false);
+    state.draft = null; view.update(state, meshes);
+    expect(view.renderer.shadowMap.needsUpdate).toBe(true);
+    expect(internal.solids.get('box-a')!.mesh.position.toArray()).toEqual([0, 0, 0]);
+    expect(internal.solids.get('box-a')!.mesh.scale.toArray()).toEqual([1, 1, 1]);
   });
 });

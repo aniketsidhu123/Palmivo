@@ -4,12 +4,12 @@ This file distinguishes verified automated behavior from hardware/presenter chec
 
 ## Automated verification
 
-The compiler/geometry subsystem was verified with **22 passing tests** during implementation on November 14, 2026. These cover twelve controller/validation cases, seven actual Manifold WASM geometry cases, and three geometry worker lifecycle cases. The final project-wide test/build result is recorded by release QA below.
+The current project passes **283 tests across 21 source files**, plus TypeScript, production bundling, and local-asset verification. The historical release sections below retain the conditions and counts of their original runs.
 
 | Check | Status / result |
 | --- | --- |
 | Complete TypeScript check | Passed |
-| Complete automated test suite | 231 tests passed across eighteen source test files after Prototype 05 features |
+| Complete automated test suite | 283 tests passed across 21 source files |
 | Production build and asset verification | Passed; six tracking assets SHA-256 verified, geometry WASM emitted and initialized |
 | Production browser smoke test | Ten consecutive pointer/keyboard CAD sequences passed; no browser errors |
 | Portable launcher smoke test | Included Node v24.22.1 launched the packaged server; packaged app passed Create/Subtract/Undo and reload restoration on port 4180 |
@@ -19,6 +19,8 @@ Run `pnpm test` and `pnpm build` to reproduce the automated checks. Core tests v
 The geometry tests execute the actual Manifold WASM module. They verify box volume/extents, centered cylinder dimensions, a transformed box-minus-cylinder through-hole, disjoint cutters, rejection of empty results, independent output buffers, and validation/rebuilding of the distributed example project. Worker lifecycle tests verify ID matching, timeout/restart, stale responses, and disposal.
 
 ## Performance targets
+
+The table below records earlier measurement sessions. Current source caps CAD rendering at a 60 FPS budget. The preserved camera pipeline baseline in `benchmarks/performance-before.json` reports 15.08 FPS delivered/processed, landmark p50/p95 12.440/18.560 ms, and rules-to-draft p50/p95 0.110/0.175 ms across 1,201 observations. Hand presence was uncontrolled in that baseline. The fixed-window benchmark implementation now records presence and control-ready coverage separately.
 
 | Metric | Target | Measured result |
 | --- | --- | --- |
@@ -52,7 +54,7 @@ Mark each item only after running it on the actual presenter setup.
 
 ## Release QA notes
 
-Verified on November 14, 2026, in the Codex in-app Chromium browser on the Windows laptop. The source environment reports an NVIDIA RTX 4050 Laptop GPU. Browser GPU choice and monitor refresh rate were not independently profiled. Exact exported sample counts/timings are retained in [browser measurements](media/browser-measurements.json) and [camera measurements](media/camera-measurements.json).
+Verified on November 14, 2026, in the Codex in-app Chromium browser on the Windows laptop. The source environment reports an NVIDIA RTX 4050 Laptop GPU. Browser GPU choice and monitor refresh rate were not independently profiled. Exact exported sample counts/timings are retained in [browser measurements](benchmarks/browser-measurements.json) and [camera measurements](benchmarks/camera-measurements.json).
 
 The ten pointer/keyboard sequences each exercised Box creation, 1.4× scaling, Cylinder creation, explicit target/cutter selection, real Subtract, Undo, Move draft, and Cancel. Reload reconstructed the committed project. Both 1440×1000 desktop and approximately 474 px compact layouts were visually checked. An initially incorrect grid placement and smoothed Boolean surface shading were fixed during QA.
 
@@ -88,7 +90,7 @@ Implemented the five improvements from the recorded-demo review: operation-aware
 - Preview scheduling tests verify immediate transform updates, coalesced inspector work, no preview persistence, and cancellation of stale queued text on commit/cancel. Real Three.js object tests verify no geometry/material/outline replacement during 100 preview updates.
 - Startup recovery tests protect the original saved project when restoration fails. Camera stop/error clears transient manipulation guidance.
 
-[Polish browser measurements](media/polish-measurements.json) retain the actual samples and update/allocation counters. In that camera-off ten-run session, 40 preview transforms produced 9 coalesced inspector updates. Boolean p95 was 5.98 ms over ten samples; frame-interval p50/p95 was 6.07/6.82 ms. These are observations from this run, not a controlled before/after speedup comparison or a physical gesture-latency measurement.
+[Polish browser measurements](benchmarks/polish-measurements.json) retain the actual samples and update/allocation counters. In that camera-off ten-run session, 40 preview transforms produced 9 coalesced inspector updates. Boolean p95 was 5.98 ms over ten samples; frame-interval p50/p95 was 6.07/6.82 ms. These are observations from this run, not a controlled before/after speedup comparison or a physical gesture-latency measurement.
 
 The presenter's supplied recording confirms the pre-polish gesture workflow succeeds. Prototype 03 was tested through automated landmark sequences and browser interaction; a fresh physical gesture rehearsal of this polished build remains a presenter check.
 
@@ -106,7 +108,7 @@ Release scope for the November 16 evening submission: precise creation presets a
 - At 1264 × 740, all nine Box presets and Commit passed center-point hit tests with no horizontal overflow. The 768 × 900 layout also retained usable preset controls without horizontal overflow.
 - The refreshed portable folder was launched with its bundled Node runtime on port 4184. An additional complete precise demo, opening the packaged example, Move/Cancel, and reload restoration passed with no browser errors. The running portable server on port 4173 serves the refreshed Prototype 04 build.
 
-[Prototype 04 browser measurements](media/prototype04-measurements.json) retain the ten-run samples: Boolean p50/p95 3.58/7.00 ms over ten operations; frame-interval p50/p95 6.07/6.17 ms. Tracking was off during that browser run. These figures do not measure physical gesture latency or guarantee performance on another display.
+[Prototype 04 browser measurements](benchmarks/prototype04-measurements.json) retain the ten-run samples: Boolean p50/p95 3.58/7.00 ms over ten operations; frame-interval p50/p95 6.07/6.17 ms. Tracking was off during that browser run. These figures do not measure physical gesture latency or guarantee performance on another display.
 
 The [precise example project](../examples/precise-through-hole-project.json) was exported by the tested browser and reopened without changing any scene or command data. The command log survives reopening; Undo snapshots start with edits made in the new session. [Project review screenshot](media/project-open-review.jpg), [precise controls screenshot](media/precise-size-presets.jpg), and [reopened portable model](media/prototype04-reopened.jpg) show the actual camera-off application.
 
@@ -128,7 +130,33 @@ A fresh physical gesture rehearsal, Wi-Fi-disabled reload, and ten-minute soak o
 | Scaled box | 28 × 42 × 56 | 12 | 65,856.000 | Closed, consistent winding, Euler 2 |
 | Through-hole result | 28 × 42 × 56 | 144 | 64,282.792 | Closed, consistent winding, Euler 0; center ray 0 hits, adjacent stock ray 2 hits |
 
-The exported through-hole also loaded in the [separate STLLoader viewer](media/stl-independent-viewer.jpg), which has no application controller or exporter dependency. The actual [inspector and export controls](media/stl-dimensions-inspector.jpg) show the final measurements. The [independent byte/geometry audit](media/stl-verification.json) records both downloaded STL files. This verifies an exchange mesh; no slicer run or physical print was performed. STL stores surface coordinates without encoded units, so import these numeric coordinates as millimetres. Keep project JSON for recipes and AST history.
+The exported through-hole also loaded in the [separate STLLoader viewer](media/stl-independent-viewer.jpg), which has no application controller or exporter dependency. The actual [inspector and export controls](media/stl-dimensions-inspector.jpg) show the final measurements. The [independent byte/geometry audit](benchmarks/stl-verification.json) records both downloaded STL files. This verifies an exchange mesh; no slicer run or physical print was performed. STL stores surface coordinates without encoded units, so import these numeric coordinates as millimetres. Keep project JSON for recipes and AST history.
 
 Current tests include no new physical gesture latency, camera-throughput, or live-hand claim. A final presenter rehearsal, Wi-Fi-disabled reload, and controlled ten-minute soak remain hardware checks before submission.
+
+## Prototype 06 frontend release — November 16, 2026
+
+The dark workbench refresh supports recording and submission this afternoon. It uses local/system fonts, stronger section labels, mint interaction feedback, and amber Commit controls. The recognition backend remains **MediaPipe + temporal gesture rules**. Controller logic, public UI APIs, DOM identifiers, palette ordering, and gesture-target identifiers remain unchanged.
+
+- The final rerun passed **231 tests across 18 files**, TypeScript, production bundling, and verification of the six local tracking assets plus geometry WASM. The six default/precise landmark-pipeline scenarios cover simulated 13/30/60 FPS. No new performance or physical tracking result is inferred from the visual refresh.
+- Two production-browser sequences passed: the precise Box 20 × 30 × 40 mm → 1.4× Scale → Cylinder radius 3 mm, height 60 mm → Subtract → Undo → Move/Cancel, and the default Box/Scale/Cylinder/Subtract sequence. Additional checks passed Scale/Cancel, Pause, STL and project JSON downloads, confirmed project reopening, and reload restoration. Dwell-mode persistence, the Test click counter, Record demo, and Snapshot were exercised without camera access.
+- The downloaded through-hole STL remained byte-identical to the independently verified example: 144 triangles, 28 × 42 × 56 mm bounds, signed volume 64,282.791638 mm³, closed surface with Euler characteristic 0, no center-ray hits, and two adjacent-stock-ray hits.
+- A development-only appearance fixture used real geometry and explicitly simulated tracking to inspect active/held scaling, tracking loss, busy state, palette hover/click confirmation, and project-review cancellation. One hundred preview updates reused rendering resources. These are simulated state checks, not a live-hand rehearsal; the fixture is excluded from the production application.
+- Click confirmation initially shifted the instruction area by 6.8 px. Reserving its text area removed that shift; the Export control retained the same rectangle before and after confirmation. The HUD and canvas do not overlap.
+- Responsive checks at 768 px and 474 px widths found no horizontal overflow and retained 44 px primary interaction targets. Desktop controls remain visible without moving the gesture targets during feedback.
+
+- The refreshed portable folder ran with its included Node runtime on port 4184. A third full browser demo passed precise creation, Scale, Subtract, STL download, Undo, Move/Cancel, repeated subtraction, and reload restoration with no console errors. Its downloaded STL is byte-identical to the verified example. The normal port 4173 serves the same Build 06 assets and reports local assets ready.
+
+The [final workbench screenshot](media/workbench-final.jpg) shows the actual camera-off application. The [recorded browser sequence](media/workbench-browser-demo.webm) contains the real CAD canvas and AST, without webcam imagery or audio. Fresh physical-hand rehearsal, Wi-Fi-disabled reload, and the ten-minute hardware soak remain presenter checks. This release makes no new latency, camera-rate, or tracking-throughput claim.
+
+## Current source and packaged workspace
+
+- All **283 tests in 21 files** and TypeScript pass. The production build and six-asset SHA-256 check pass. Current full landmark-driven geometry coverage includes six default/precise two-hand sequences and three one-hand sequences at simulated 13/30/60 FPS, plus safety and recovery scenarios.
+- One-hand dwell requires a stable detected pointer hand, without pinching or an offhand. Range-only calibration, deliberate dwell, target-exit rearming, and missing-input recovery have automated coverage. Precise Move/Scale buttons use the same draft controller and require explicit Commit.
+- Tracking prefers a supported capture-rate constraint at the existing resolution and processes the newest waiting metadata immediately after worker completion. Capture, worker round trip, callback-to-handler, rules, and geometry measurements remain separate. The raw camera probes show approximately 15 FPS delivery on the tested camera despite its advertised 30 FPS mode.
+- The renderer uses a drift-corrected 60 FPS budget and static shadow reuse. Tests verify refresh-rate scheduling, shadow invalidation, and preview resource reuse. The 23-second benchmark excludes its first three seconds and measures a fixed twenty-second window. Tests cover warm-up exclusion, timing order, sample accounting, percentile calculation, and repeated sessions.
+- The packaged camera-off browser flow passed precise Box creation, four 0.1× scale steps to 1.4×, keyboard activation of a 1 mm X move, Cancel restoring its position, Cylinder creation, and real subtraction with 28 × 42 × 56 mm dimensions. Undo and input-mode changes preserved the committed scene. No browser console errors were recorded. These are pointer/keyboard browser checks, separate from the synthetic landmark tests.
+- [One-hand controls](media/one-hand-precision.jpg), [inspector detail](media/one-hand-inspector.jpg), and [current CAD workspace](media/workspace-mvp.jpg) show the actual packaged application with camera off. The final eight-slide presentation uses these current controls and distinguishes implemented recognition from future ST-GCN/CTC research.
+
+The README and presentation use preserved stage measurements with their original conditions. No 30–60 FPS camera achievement, controlled before/after speedup, or physical gesture-latency result is inferred from the source changes.
 

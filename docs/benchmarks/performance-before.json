@@ -1,0 +1,45 @@
+{
+  "capturedAt": "2026-11-16T05:01:13.694Z",
+  "backend": "GPU worker",
+  "camera": {
+    "cameraFps": 15.084662669230951,
+    "trackingFps": 15.084662669230951,
+    "droppedFrames": 6
+  },
+  "recognition": "MediaPipe + temporal gesture rules",
+  "notes": "Browser timings; not physical motion-to-action latency.",
+  "metrics": {
+    "render_frame_ms": {
+      "samples": 1800,
+      "p50": 6.059999999997672,
+      "p95": 6.139999999999418
+    },
+    "boolean_ms": {
+      "samples": 1,
+      "p50": 5.170000001788139,
+      "p95": 5.170000001788139
+    },
+    "landmark_ms": {
+      "samples": 1201,
+      "p50": 12.439999997615814,
+      "p95": 18.560000002384186
+    },
+    "rules_to_draft_ms": {
+      "samples": 1201,
+      "p50": 0.10999999940395355,
+      "p95": 0.17499999701976776
+    }
+  },
+  "presentation": {
+    "fullUpdates": 5,
+    "renderPreviews": 0,
+    "inspectorPreviews": 0,
+    "persistenceWrites": 1
+  },
+  "viewport": {
+    "structuralUpdates": 5,
+    "previewUpdates": 0,
+    "outlineCreations": 1,
+    "geometryCreations": 1
+  }
+}

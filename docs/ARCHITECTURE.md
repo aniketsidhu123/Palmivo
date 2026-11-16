@@ -25,17 +25,36 @@ flowchart LR
 | `src/tracking` | Camera scheduling, MediaPipe worker, hand features, temporal recognition |
 | `src/core/controller.ts` | Authoritative scene state, drafts, Commit, Cancel, Undo |
 | `src/core/validation.ts` | AST, scene, bounds, reference, and revision validation |
+| `src/core/transformSteps.ts` | Exact XY and uniform-scale preview adjustments through the same controller |
+| `src/core/benchmark.ts` | Fixed measurement windows, warm-up exclusion, bounded samples, and percentile accounting |
 | `src/geometry` | Manifold WASM kernel, worker transport, timeout/restart |
 | `src/ui` | DOM workspace, Three.js scene, picking and plane projection |
+| `src/ui/performancePanel.ts` | Negotiated camera mode, measured rates, benchmark controls, and result summaries |
 | `src/storage.ts` | Local project persistence |
 | `src/metrics.ts` | Bounded timing samples and JSON downloads |
 | `src/shared/types.ts` | Shared data contracts |
 
 ## Threading and backpressure
 
-The main thread renders independently and owns the interaction state. The tracking worker processes one transferred frame at a time. New frames are skipped while it is busy; there is no growing inference backlog. The geometry worker handles committed solid generation and Boolean work.
+The main thread renders independently and owns the interaction state. The tracking worker processes one transferred image bitmap at a time. While inference runs, the client retains only the newest waiting frame's timestamp/media metadata. Worker completion immediately submits that newest frame, avoiding a wait for another camera callback. Superseded metadata is discarded, so neither image resources nor inference jobs accumulate. The geometry worker handles committed solid generation and Boolean work.
 
 Tracking initializes its model once. Geometry initializes its WASM module once. Transferred image bitmaps are closed after processing. Geometry results contain independent typed arrays, so deleting Manifold handles cannot invalidate the rendered mesh.
+
+Camera startup requests the preferred capture rate and, where supported, attempts a minimum 30 FPS mode at the exact negotiated resolution. A rejected preference restores the prior constraints. Diagnostics expose negotiated dimensions, rate, and supported rate ranges separately from delivered frame counts. Frame conversion and inference both have timeout and generation guards.
+
+The renderer retains `requestAnimationFrame` scheduling with a drift-corrected 60 FPS work budget. It reports intervals and counts for actual rendered frames. Static shadow maps are reused; committed geometry and changed preview transforms invalidate them. Rendering, tracking, and geometry remain separate schedules.
+
+## Input modes and accessible command access
+
+Pinch mode uses a dominant pointer hand and an open other palm to arm toolbar controls. Two-hand Dwell assist keeps the same tracking roles and replaces the pinch click with a timed hover. Both retain continuous pinch-drag movement and two-hand scaling.
+
+One-hand dwell tracks the selected pointer-hand identity alone. It accepts a relaxed hand without pinch or extended-finger pose requirements. It requires 300 ms of stable valid tracking and repeats that neutral reacquisition after a missing observation. Single-hand outputs never create pinch edges or a two-hand scaling state.
+
+The shared target activator uses 900 ms dwell for ordinary controls and 1,200 ms for Commit. After activation, the cursor must leave all controls with deliberate movement before another dwell can activate. Missing tracking clears candidates immediately. Switching input mode cancels an unfinished draft and resets temporal arming.
+
+Precise adjustment buttons provide 1 mm steps along X/Y and 0.1× changes in uniform scale. They update controller drafts and require the same explicit Commit or Cancel as continuous manipulation. Object-list selection, creation presets, Boolean operands, Undo, and STL export use the same target resolution path. Focused HTML buttons retain their normal Enter/Space activation; workspace shortcuts remain available outside focused controls.
+
+Default calibration checks both hands, comfortable cursor range, pinch cycles, and toolbar arming. One-hand calibration records the pointer's comfortable range without pinch cycles or an offhand check. Profiles and input settings persist in local storage.
 
 The geometry client assigns increasing job IDs. A three-second timeout terminates the worker and rejects pending work. Old worker responses are ignored after restart. The controller also uses a generation guard, preventing an in-flight result from restoring geometry after a reset.
 
@@ -78,4 +97,8 @@ Vite emits local application and geometry-worker assets. The static server binds
 Camera delivery FPS and processed tracking FPS are separate. Inference timings cover the tracking call; rules-to-draft timing covers recognition and synchronous interaction handling; geometry timings cover the asynchronous geometry request. Render-frame intervals and command completion times are separate samples.
 
 The collector keeps a bounded rolling sample window per metric. Its export includes p50, p95, and sample counts. These values do not establish physical motion-to-display latency. No trained ST-GCN/CTC inference is included in the current timing path.
+
+The fixed benchmark is separate from rolling diagnostics. It snapshots input/camera metadata at Start, excludes a three-second warm-up, and accepts observations only during the following twenty seconds. Exact completed tracking and rendering counts determine their average FPS. Camera-rate observations retain the client-reported interval-rate definition. Percentiles use nearest rank over bounded retained samples; counts and means use all accepted observations.
+
+The export includes hand-presence and control-ready proportions. Video-callback-to-handler timing ends after synchronous main-thread interaction handling; exposure, deliberate dwell, display scanout, and asynchronous geometry have separate boundaries. Camera stop, input configuration changes, recalibration, or backgrounding the tab interrupt an active benchmark rather than combine incompatible samples. Measurement exports live in `docs/benchmarks/`.
 

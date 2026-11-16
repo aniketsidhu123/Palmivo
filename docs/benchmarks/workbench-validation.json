@@ -1,0 +1,73 @@
+{
+  "release": "Prototype 06",
+  "date": "2026-11-16",
+  "automated": {
+    "files": 18,
+    "tests": 231,
+    "syntheticLandmarkFlows": 6,
+    "simulatedFPS": [
+      13,
+      30,
+      60
+    ]
+  },
+  "browser": {
+    "camera": "off",
+    "completeSequences": 3,
+    "productionFlows": [
+      "precise",
+      "default"
+    ],
+    "portableBundledRuntimeFlow": "precise",
+    "reopenAndReload": true,
+    "undoMoveCancel": true,
+    "pause": true,
+    "dwellModePersistence": true,
+    "testClickCounter": true,
+    "recordingDownload": true,
+    "snapshotDownload": true,
+    "consoleErrors": 0
+  },
+  "appearanceFixture": {
+    "tracking": "explicitly simulated",
+    "resourceReuseSamples": 100,
+    "hudCanvasOverlap": false,
+    "confirmationTargetShiftAfterFix": 0,
+    "responsiveWidths": [
+      768,
+      474
+    ],
+    "horizontalOverflow": false,
+    "compactTargetHeight": 44
+  },
+  "stl": {
+    "sha256": "fe7ec1305fbb6fed77bef0a7733eb5ec04b9f81ff7255ce19c058cec2afe5fce",
+    "triangles": 144,
+    "dimensionsMM": [
+      28,
+      42,
+      56
+    ],
+    "signedVolumeMM3": 64282.791638072595,
+    "closed": true,
+    "euler": 0,
+    "centerHoleRayHits": 0,
+    "adjacentStockRayHits": 2
+  },
+  "recording": {
+    "bytes": 3252553,
+    "format": "WebM",
+    "camera": false,
+    "audio": false
+  },
+  "snapshot": {
+    "width": 723,
+    "height": 406
+  },
+  "preservedStaticUIIdentifiers": 57,
+  "presenterChecks": [
+    "physical hand rehearsal",
+    "Wi-Fi-disabled reload",
+    "ten-minute hardware soak"
+  ]
+}

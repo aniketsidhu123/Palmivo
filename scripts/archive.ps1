@@ -15,8 +15,8 @@ foreach ($bundle in $bundles) {
     try {
         foreach ($file in Get-ChildItem -LiteralPath $bundleRoot -Recurse -File -Force) {
             $entryName = [IO.Path]::GetRelativePath($releaseRoot, $file.FullName).Replace('\', '/')
-            if ($entryName -match '(^|/)(\.git|\.agents|\.codex|node_modules|\.pnpm-store)(/|$)') { continue }
-            if ($entryName -match '\.log$') { continue }
+            if ($entryName -match '(^|/)(\.git|\.agents|\.codex|node_modules|\.pnpm-store|__pycache__|\.pytest_cache)(/|$)') { continue }
+            if ($entryName -match '\.(log|pyc|pyo|tmp|temp)$') { continue }
             [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $entryName, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
         }
     } finally { $archive.Dispose(); $stream.Dispose() }

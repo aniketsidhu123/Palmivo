@@ -12,6 +12,9 @@ import { recoverProject } from './core/recovery';
 import { getSizePreset } from './core/presets';
 import { MAX_PROJECT_FILE_BYTES, parseProjectFile } from './core/projectFile';
 import { exportSolidSTL } from './core/stlExport';
+import { applyTransformStep } from './core/transformSteps';
+import { PerformanceBenchmark, type BenchmarkResult } from './core/benchmark';
+import { createPerformancePanel } from './ui/performancePanel';
 import { createUI } from './ui/workspace';
 import { CADViewport } from './ui/viewport';
 import { loadProject, saveProject } from './storage';
@@ -24,23 +27,39 @@ const backendInfo = document.createElement('div'); backendInfo.className = 'runt
 backendInfo.append('TRACKING BACKEND / '); const backendValue = document.createElement('span'); backendValue.dataset.metric = 'backend'; backendValue.textContent = 'uninitialized'; backendInfo.append(backendValue);
 document.querySelector('.runtime-panel')!.append(backendInfo);
 const measurements = new Measurements();
+const benchmark = new PerformanceBenchmark();
+let benchmarkResult: BenchmarkResult | null = null;
+let benchmarkContext: Record<string, unknown> = {};
+const performanceUI = createPerformancePanel(document.querySelector('.runtime-panel')!);
+const measure = (name: string, value: number) => { measurements.add(name, value); benchmark.add(name, value, performance.now()); };
+function interruptBenchmark(reason: string) {
+  if (!['warmup', 'recording'].includes(benchmark.status(performance.now()).phase)) return;
+  benchmark.reset(); benchmarkResult = null;
+  ui.setStatus('Benchmark interrupted: ' + reason + '. Start a fresh complete sample.');
+}
 const geometry = new GeometryClient();
 const controller = new Controller({ build: async recipe => {
   const start = performance.now();
   try { return await geometry.build(recipe); }
-  finally { measurements.add(recipe.kind === 'subtract' ? 'boolean_ms' : 'primitive_ms', performance.now() - start); }
+  finally { measure(recipe.kind === 'subtract' ? 'boolean_ms' : 'primitive_ms', performance.now() - start); }
 } });
 const viewport = new CADViewport(ui.viewportHost);
-viewport.onFrame = ms => measurements.add('render_frame_ms', ms);
+let renderCount = 0, renderReportAt = performance.now(), renderFPS = 0;
+viewport.onFrame = ms => {
+  measure('render_frame_ms', ms); renderCount++;
+  const now = performance.now();
+  if (now - renderReportAt >= 1000) { renderFPS = renderCount * 1000 / (now - renderReportAt); measure('render_fps', renderFPS); renderCount = 0; renderReportAt = now; }
+};
 let profile: CalibrationProfile = { ...DEFAULT_PROFILE };
 let hasSavedCalibration = false;
 try { const saved = localStorage.getItem('signtoast-calibration'); if (saved) { profile = sanitizeProfile(JSON.parse(saved)); hasSavedCalibration = true; } } catch { /* Defaults work without storage. */ }
 let calibratedProfile = { ...profile };
 type Sensitivity = 'standard' | 'easier' | 'precise' | 'calibrated';
-let tuning: { sensitivity: Sensitivity; mode: 'pinch' | 'dwell'; hoverMs: number } = { sensitivity: 'easier', mode: 'pinch', hoverMs: 350 };
+type InputMode = 'pinch' | 'dwell' | 'one-hand';
+let tuning: { sensitivity: Sensitivity; mode: InputMode; hoverMs: number } = { sensitivity: 'easier', mode: 'pinch', hoverMs: 350 };
 try {
   const saved = JSON.parse(localStorage.getItem('signtoast-input-settings') || 'null');
-  if (saved) tuning = { sensitivity: ['standard','easier','precise','calibrated'].includes(saved.sensitivity) ? saved.sensitivity : 'easier', mode: saved.mode === 'dwell' ? 'dwell' : 'pinch', hoverMs: [200,350,500].includes(saved.hoverMs) ? saved.hoverMs : 350 };
+  if (saved) tuning = { sensitivity: ['standard','easier','precise','calibrated'].includes(saved.sensitivity) ? saved.sensitivity : 'easier', mode: ['dwell','one-hand'].includes(saved.mode) ? saved.mode : 'pinch', hoverMs: [200,350,500].includes(saved.hoverMs) ? saved.hoverMs : 350 };
 } catch { /* Use the accessible default. */ }
 function tunedProfile(base: CalibrationProfile): CalibrationProfile {
   const presets = { standard: [.32, .52], easier: [.40, .62], precise: [.25, .42], calibrated: [base.pinchClose, base.pinchOpen] };
@@ -48,9 +67,10 @@ function tunedProfile(base: CalibrationProfile): CalibrationProfile {
   return sanitizeProfile({ ...base, dominantHand: profile.dominantHand, pinchClose, pinchOpen });
 }
 profile = tunedProfile(calibratedProfile);
-const recognizer = new GestureRecognizer(profile);
-let buttonActivation = new TargetActivation({ mode: tuning.mode, hoverMs: tuning.hoverMs, maxCaptureDriftPx: 64 });
+const recognizer = new GestureRecognizer(profile, { singleHand: tuning.mode === 'one-hand' });
+let buttonActivation = new TargetActivation({ mode: tuning.mode === 'pinch' ? 'pinch' : 'dwell', hoverMs: tuning.hoverMs, maxCaptureDriftPx: 64 });
 ui.tuningSensitivity.value = tuning.sensitivity; ui.tuningActivation.value = tuning.mode; ui.tuningHover.value = String(tuning.hoverMs);
+ui.tuningSensitivity.disabled = tuning.mode === 'one-hand';
 ui.tuningActivation.dispatchEvent(new Event('change'));
 ui.dominantHandSelect.value = profile.dominantHand;
 let lastDraft: object | null = null;
@@ -119,12 +139,12 @@ async function runTool(tool: Tool, source: 'pointer' | 'gesture-rules' | 'keyboa
   if (tool === 'subtract') controller.beginSubtract();
   if (tool === 'undo') controller.undo();
   if (tool === 'commit') {
-    const start = performance.now(); const committed = await controller.commit(source); measurements.add('command_completion_ms', performance.now() - start);
+    const start = performance.now(); const committed = await controller.commit(source); measure('command_completion_ms', performance.now() - start);
     if (committed) ui.confirmAction(controller.state.lastCommand?.ast.type === 'Subtract' ? 'Subtraction complete. Solid saved.' : `${controller.state.lastCommand?.ast.type} committed.`, button);
   }
   const draft = controller.state.draft;
   if (draft && draft !== beforeDraft) {
-    const message = draft.kind === 'create' ? `${draft.solid.name} ready. Choose Commit to create it.` : draft.kind === 'scale' ? 'Scale ready. Pinch both hands, then change their separation.' : draft.kind === 'move' ? 'Move ready. Pinch and drag the selected solid.' : 'Target chosen. Select a different solid as the cutter.';
+    const message = draft.kind === 'create' ? `${draft.solid.name} ready. Choose Commit to create it.` : tuning.mode === 'one-hand' && (draft.kind === 'scale' || draft.kind === 'move') ? 'Hold over the precise adjustment buttons. Commit applies the preview; Cancel restores it.' : draft.kind === 'scale' ? 'Scale ready. Pinch both hands, then change their separation.' : draft.kind === 'move' ? 'Move ready. Pinch and drag the selected solid.' : 'Target chosen. Select a different solid as the cutter.';
     ui.confirmAction(message, button);
   }
   if (tool === 'undo' && controller.state.historyCount < beforeHistory) ui.confirmAction('Undo restored the previous scene.', button);
@@ -143,11 +163,23 @@ function selectSolid(id: string, button: HTMLButtonElement | null = null) {
   } else if (!controller.state.draft) { controller.select(id); ui.confirmAction(`${solid.name} selected.`, button); }
 }
 document.querySelector('#app')!.addEventListener('click', event => {
+  const adjustment = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-transform-step]');
+  if (adjustment?.dataset.transformStep && !adjustment.disabled) adjustPreview(adjustment.dataset.transformStep, 'pointer');
   const presetButton = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-size-preset]');
   if (presetButton?.dataset.sizePreset && !presetButton.disabled) chooseSizePreset(presetButton.dataset.sizePreset, 'pointer');
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-solid-id]');
   if (button?.dataset.solidId && !button.disabled) selectSolid(button.dataset.solidId, button);
 });
+
+function adjustPreview(key: string, source: 'pointer' | 'gesture-rules') {
+  if (!initialized || projectOpening || projectPicking || calibration && source === 'gesture-rules') return;
+  if (source !== 'gesture-rules') resetActivation();
+  if (applyTransformStep(controller, key)) {
+    moving = null; movePhase = 'held';
+    if (controller.state.draft?.kind === 'scale') scaling?.reset(controller.state.draft.uniformScale);
+    ui.confirmAction('Preview adjusted. Move off buttons before another dwell. Commit applies; Cancel restores.', ui.transformStepButtons.get(key));
+  }
+}
 
 function chooseSizePreset(key: string, source: 'pointer' | 'gesture-rules') {
   if (projectOpening || projectPicking || !initialized) return;
@@ -197,6 +229,8 @@ document.addEventListener('keydown', event => {
   if (event.target === ui.stlExportButton && (event.key === 'Enter' || event.key === ' ')) {
     event.preventDefault(); exportSelectedSTL('keyboard'); return;
   }
+  // Focused controls keep their native keyboard action; shortcuts apply to the workspace.
+  if ((event.key === 'Enter' || event.key === ' ') && (event.target as HTMLElement).closest('button')) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); void runTool('undo', 'keyboard'); return; }
   const keys: Record<string, Tool> = { b: 'box', c: 'cylinder', v: 'select', m: 'move', s: 'scale', d: 'subtract', Escape: 'cancel', Enter: 'commit', ' ': 'pause' };
   const tool = keys[event.key]; if (tool) { event.preventDefault(); void runTool(tool, 'keyboard'); }
@@ -220,6 +254,7 @@ function resetActivation() {
   highlightedButton?.classList.remove('gesture-hover'); highlightedButton = null;
 }
 function buttonId(button: HTMLButtonElement): string | null {
+  if (button.dataset.transformStep) return 'adjust:' + button.dataset.transformStep;
   if (button === ui.testGestureButton) return 'test:click';
   if (button === ui.stlExportButton) return 'export:stl';
   if (button.dataset.sizePreset) return `preset:${button.dataset.sizePreset}`;
@@ -228,6 +263,7 @@ function buttonId(button: HTMLButtonElement): string | null {
 }
 function resolveButton(id: string | null): HTMLButtonElement | null {
   if (!id) return null;
+  if (id.startsWith('adjust:')) return ui.transformStepButtons.get(id.slice(7)) || null;
   if (id === 'test:click') return ui.testGestureButton;
   if (id === 'export:stl') return ui.stlExportButton;
   if (id.startsWith('preset:')) return ui.sizePresetButtons.get(id.slice(7)) || null;
@@ -258,7 +294,7 @@ ui.testGestureButton.addEventListener('click', () => testClick('mouse'));
 
 function presentManipulation() {
   const state = controller.state;
-  if (!cameraRunning || calibration || projectOpening || projectPicking || state.busy || state.paused) { ui.clearManipulationFeedback(); return; }
+  if (!cameraRunning || calibration || projectOpening || projectPicking || state.busy || state.paused || tuning.mode === 'one-hand') { ui.clearManipulationFeedback(); return; }
   if (state.draft?.kind === 'scale') ui.setManipulationFeedback('scale', scaling?.phase || 'ready', state.draft.uniformScale);
   else if (state.draft?.kind === 'move') ui.setManipulationFeedback('move', movePhase);
   else ui.clearManipulationFeedback();
@@ -270,7 +306,7 @@ function handleGesture(output: GestureOutput) {
 function processGesture(output: GestureOutput) {
   lastGesture = output;
   const ratio = output.dominantRatio;
-  const pinchFeedback = ratio === undefined || !Number.isFinite(ratio) ? 'Pointer hand not detected' : `${ratio.toFixed(2)} · close ≤${profile.pinchClose.toFixed(2)} / release ≥${profile.pinchOpen.toFixed(2)} · ${output.dominantPinched ? 'PINCHED' : output.pinchClosing ? 'CLOSING' : 'OPEN'}`;
+  const pinchFeedback = tuning.mode === 'one-hand' ? 'Not required · one-hand dwell' : ratio === undefined || !Number.isFinite(ratio) ? 'Pointer hand not detected' : `${ratio.toFixed(2)} · close ≤${profile.pinchClose.toFixed(2)} / release ≥${profile.pinchOpen.toFixed(2)} · ${output.dominantPinched ? 'PINCHED' : output.pinchClosing ? 'CLOSING' : 'OPEN'}`;
   if (!output.trackingReady || !output.cursor || !cameraRunning) {
     scaling?.update(output);
     if (moving?.source === 'gesture') {
@@ -280,9 +316,9 @@ function processGesture(output: GestureOutput) {
     buttonActivation.update({ timestamp: output.timestamp, targetId: null, trackingReady: false, toolbarArmed: false, pinched: output.dominantPinched, pinchStarted: false, pinchReleased: false, cursor: null });
     lastTargetId = null; clickCursorLock = null; highlightedButton?.classList.remove('gesture-hover'); highlightedButton = null;
     ui.setGestureCursor(0, 0, false, false);
-    const gate = cameraRunning ? output.trackingLost ? 'Show both hands fully in frame.' : 'Release both pinches and hold hands steady briefly.' : 'Enable the camera to test your input.';
+    const gate = cameraRunning ? tuning.mode === 'one-hand' ? 'Show your pointer hand and hold steady briefly. No pinch needed.' : output.trackingLost ? 'Show both hands fully in frame.' : 'Release both pinches and hold hands steady briefly.' : 'Enable the camera to test your input.';
     ui.setGestureFeedback({ hands: handFeedback, pinch: pinchFeedback, gate, target: 'No target', progress: 0 });
-    if (output.trackingLost) { gesturePaused = true; ui.setTracking('Tracking paused · show both hands'); }
+    if (output.trackingLost) { gesturePaused = true; ui.setTracking(tuning.mode === 'one-hand' ? 'Tracking paused · show pointer hand' : 'Tracking paused · show both hands'); }
     return;
   }
   gesturePaused = false;
@@ -299,13 +335,14 @@ function processGesture(output: GestureOutput) {
   const visual = clickCursorLock || { x, y };
   ui.setGestureCursor(visual.x, visual.y, true, output.toolbarArmed);
   const phases: Record<string, string> = { 'tracking-lost': 'Show both hands.', 'gate-closed': 'Open your other palm; keep at least three fingers straight.', release: 'Fully separate thumb and index finger to rearm.', idle: 'Aim at a button.', hover: 'Hold steady while the progress bar fills.', ready: tuning.mode === 'pinch' ? 'Ready — pinch thumb and index finger.' : 'Hold steady to activate.', closing: 'Pinch detected — target held steady.', activated: 'Click registered. Release before your next click.', 'leave-targets': 'Move away from the buttons to rearm dwell.' };
-  const gate = !output.toolbarArmed ? output.otherRatio !== undefined && output.otherRatio < profile.pinchOpen ? `Spread your other thumb and index apart: ${output.otherRatio.toFixed(2)} / ${profile.pinchOpen.toFixed(2)} required.` : !output.otherOpen ? 'Straighten at least three fingers on your other hand.' : 'Hold your other palm open briefly.' : phases[activation.phase] || 'Ready';
-  ui.setTracking(output.toolbarArmed ? `Toolbar armed · ${tuning.mode === 'dwell' ? 'dwell assist' : 'pinch to select'}` : 'Two hands tracked · open other hand for tools');
+  const gate = tuning.mode === 'one-hand' ? phases[activation.phase] || 'Hold over a button, then move away to rearm.' : !output.toolbarArmed ? output.otherRatio !== undefined && output.otherRatio < profile.pinchOpen ? `Spread your other thumb and index apart: ${output.otherRatio.toFixed(2)} / ${profile.pinchOpen.toFixed(2)} required.` : !output.otherOpen ? 'Straighten at least three fingers on your other hand.' : 'Hold your other palm open briefly.' : phases[activation.phase] || 'Ready';
+  ui.setTracking(tuning.mode === 'one-hand' ? 'One-hand dwell · no pinch or other hand required' : output.toolbarArmed ? `Toolbar armed · ${tuning.mode === 'dwell' ? 'dwell assist' : 'pinch to select'}` : 'Two hands tracked · open other hand for tools');
   ui.setGestureFeedback({ hands: handFeedback, pinch: pinchFeedback, gate, target: target?.getAttribute('aria-label') || target?.textContent?.replace(/\s+/g, ' ').trim() || 'No target', progress: activation.progress });
   if (activation.activate) {
     const button = resolveButton(activation.activate);
     if (!eligible(button)) return;
     if (button === ui.testGestureButton) testClick('gesture');
+    else if (button.dataset.transformStep) adjustPreview(button.dataset.transformStep, 'gesture-rules');
     else if (button === ui.stlExportButton) exportSelectedSTL('gesture-rules');
     else if (activation.activate.startsWith('tool:')) void runTool(activation.activate.slice(5) as Tool, 'gesture-rules');
     else if (button.dataset.sizePreset) chooseSizePreset(button.dataset.sizePreset, 'gesture-rules');
@@ -337,26 +374,40 @@ function processGesture(output: GestureOutput) {
   } else if (output.pinchStarted) { const id = viewport.pick(x, y); if (id) selectSolid(id); }
 }
 
+function completeCalibration(session: CalibrationSession) {
+  calibratedProfile = session.finish();
+  profile = tunedProfile(calibratedProfile); recognizer.setProfile(profile); resetActivation(); hasSavedCalibration = true;
+  try { localStorage.setItem('signtoast-calibration', JSON.stringify(calibratedProfile)); } catch { /* Mapping remains valid for this session. */ }
+  calibration = null; useMappingButton.hidden = true;
+  ui.setCalibration(tuning.mode === 'one-hand' ? 'Mapping saved. Hold over Test click; no pinch needed.' : 'Calibration complete. Hover a tool, then pinch.', tuning.mode === 'one-hand' ? 2 : 4);
+  setTimeout(() => { if (!calibration) ui.setCalibration('', 0); }, 3500);
+}
 function beginCalibration() {
   if (projectOpening || projectPicking) return;
   if (!cameraRunning) { ui.setStatus('Enable the camera before calibration.'); return; }
+  interruptBenchmark('mapping changed');
   controller.cancel(); recognizer.reset();
   moving = null; scaling = null; resetActivation();
-  calibration = { stage: 0, cyclesAtStart: 0, started: performance.now(), session: new CalibrationSession(profile) };
+  calibration = { stage: 0, cyclesAtStart: 0, started: performance.now(), session: new CalibrationSession(profile, { singleHand: tuning.mode === 'one-hand' }) };
   useMappingButton.hidden = false;
-  ui.setCalibration('Show both hands with fingers open for one second.', 1);
+  ui.setCalibration(tuning.mode === 'one-hand' ? 'Show your pointer hand comfortably for one second. No pinch needed.' : 'Show both hands with fingers open for one second.', 1);
 }
 function calibrateFrame(frame: TrackingFrame, output: GestureOutput) {
   const c = calibration; if (!c) return;
   const progress = c.session.update(frame);
-  if (!progress.bothHandsVisible) { ui.setCalibration('Keep both hands visible while calibrating.', c.stage + 1); return; }
-  if (c.stage === 0 && output.trackingReady && progress.otherHandVerified && frame.timestamp - c.started >= 1000) {
+  const single = tuning.mode === 'one-hand';
+  if (single ? !progress.pointerVisible : !progress.bothHandsVisible) { ui.setCalibration(single ? 'Keep your pointer hand visible while mapping.' : 'Keep both hands visible while calibrating.', c.stage + 1); return; }
+  if (c.stage === 0 && output.trackingReady && (single || progress.otherHandVerified) && frame.timestamp - c.started >= 1000) {
     c.stage = 1; c.started = frame.timestamp;
     ui.setCalibration('Sweep your pointer hand left/right and up/down across a comfortable area for 4 seconds.', 2);
   }
   if (c.stage === 1) {
     if (frame.timestamp - c.started > 4000) {
       if (!progress.rangeReady) { ui.setCalibration('Sweep a wider area: move your pointer hand left/right and up/down.', 2); return; }
+      if (single) {
+        try { completeCalibration(c.session); } catch (error) { ui.setCalibration(error instanceof Error ? error.message : 'Please complete the comfortable range sweep.', 2); }
+        return;
+      }
       c.stage = 2; c.cyclesAtStart = progress.pinchCycles;
       ui.setCalibration('Pinch and fully release your pointer hand three times.', 3);
     }
@@ -365,18 +416,22 @@ function calibrateFrame(frame: TrackingFrame, output: GestureOutput) {
     if (cycles < 3) ui.setCalibration(`Pinch and fully release · ${cycles}/3 complete.`, 3);
     else { c.stage = 3; ui.setCalibration('Open your other hand to arm the toolbar.', 4); }
   } else if (c.stage === 3 && output.toolbarArmed) {
-    try { calibratedProfile = c.session.finish(); }
+    try { completeCalibration(c.session); }
     catch (error) { ui.setCalibration(error instanceof Error ? error.message : 'Please complete the calibration steps.', 4); return; }
-    profile = tunedProfile(calibratedProfile); recognizer.setProfile(profile); resetActivation(); hasSavedCalibration = true;
-    try { localStorage.setItem('signtoast-calibration', JSON.stringify(calibratedProfile)); } catch { /* Profile remains valid for this session. */ }
-    calibration = null; useMappingButton.hidden = true; ui.setCalibration('Calibration complete. Hover a tool, then pinch.', 4);
-    setTimeout(() => { if (!calibration) ui.setCalibration('', 0); }, 3500);
   }
 }
 
 const tracking = new TrackingClient({
+  onTiming: timing => {
+    measure('frame_capture_ms', timing.captureMs);
+    measure('tracking_round_trip_ms', timing.roundTripMs);
+    measure('video_to_landmarks_ms', timing.sampleAgeMs);
+  },
   onStatus: status => {
     ui.setTracking(status.message);
+    performanceUI.camera(status.cameraInfo, status);
+    if (status.state === 'running' && status.cameraFps > 0) { measure('camera_fps', status.cameraFps); measure('tracking_fps', status.trackingFps); }
+    if ((status.state === 'stopped' || status.state === 'error') && ['warmup', 'recording'].includes(benchmark.status(performance.now()).phase)) { benchmark.reset(); ui.setStatus('Benchmark interrupted by camera stop. Run a fresh complete sample.'); }
     if (status.state === 'error') {
       cameraRunning = false; calibration = null; useMappingButton.hidden = true; moving = null; scaling = null; resetActivation();
       ui.clearManipulationFeedback();
@@ -387,7 +442,7 @@ const tracking = new TrackingClient({
   },
   onFrame: frame => {
     handFeedback = frame.hands.length ? frame.hands.map(hand => `${hand.handedness} ${Math.round(hand.score * 100)}%`).join(' · ') : 'No hands detected';
-    lastFrameAt = performance.now(); drawHands(frame); measurements.add('landmark_ms', frame.inferenceMs);
+    lastFrameAt = performance.now(); drawHands(frame); measure('landmark_ms', frame.inferenceMs); measure('hands_detected', frame.hands.length); measure('hands_present', frame.hands.length > 0 ? 1 : 0);
     const start = performance.now(); const output = recognizer.process(frame);
     const wasCalibrating = calibration !== null;
     calibrateFrame(frame, output);
@@ -395,7 +450,9 @@ const tracking = new TrackingClient({
     // an edge produced under the previous profile on that same frame.
     if (wasCalibrating && calibration === null) ui.setGestureCursor(0, 0, false, false);
     else handleGesture(output);
-    measurements.add('rules_to_draft_ms', performance.now() - start);
+    measure('rules_to_draft_ms', performance.now() - start);
+    measure('video_to_handler_ms', performance.now() - frame.timestamp);
+    measure('gesture_ready', output.trackingReady ? 1 : 0);
   },
 });
 ui.cameraButton.addEventListener('click', async () => {
@@ -408,14 +465,22 @@ ui.cameraButton.addEventListener('click', async () => {
 ui.calibrateButton.addEventListener('click', beginCalibration);
 ui.dominantHandSelect.addEventListener('change', () => { profile = { ...profile, dominantHand: ui.dominantHandSelect.value === 'Left' ? 'Left' : 'Right' }; calibratedProfile = { ...calibratedProfile, dominantHand: profile.dominantHand }; recognizer.setProfile(profile); resetActivation(); try { localStorage.setItem('signtoast-calibration', JSON.stringify(calibratedProfile)); } catch {} if (cameraRunning) beginCalibration(); });
 function changeTuning() {
-  tuning = { sensitivity: ui.tuningSensitivity.value as Sensitivity, mode: ui.tuningActivation.value === 'dwell' ? 'dwell' : 'pinch', hoverMs: Number(ui.tuningHover.value) };
-  profile = tunedProfile(calibratedProfile); recognizer.setProfile(profile);
-  buttonActivation = new TargetActivation({ mode: tuning.mode, hoverMs: tuning.hoverMs, maxCaptureDriftPx: 64 }); resetActivation();
+  if (controller.state.busy || projectOpening || projectPicking) { ui.tuningSensitivity.value = tuning.sensitivity; ui.tuningActivation.value = tuning.mode; ui.tuningHover.value = String(tuning.hoverMs); ui.setStatus('Wait for the current operation before changing input settings.'); return; }
+  interruptBenchmark('input settings changed');
+  const mode: InputMode = ui.tuningActivation.value === 'one-hand' ? 'one-hand' : ui.tuningActivation.value === 'dwell' ? 'dwell' : 'pinch';
+  if (mode !== tuning.mode && controller.state.draft) {
+    controller.cancel(); ui.setSelectedTool(null); ui.clearManipulationFeedback();
+    ui.confirmAction('Input mode changed. Draft cancelled; committed scene preserved.');
+  }
+  tuning = { sensitivity: ui.tuningSensitivity.value as Sensitivity, mode, hoverMs: Number(ui.tuningHover.value) };
+  ui.tuningSensitivity.disabled = mode === 'one-hand';
+  profile = tunedProfile(calibratedProfile); recognizer.setProfile(profile); recognizer.setSingleHand(mode === 'one-hand');
+  buttonActivation = new TargetActivation({ mode: mode === 'pinch' ? 'pinch' : 'dwell', hoverMs: tuning.hoverMs, maxCaptureDriftPx: 64 }); resetActivation();
   moving = null; scaling = null;
   try { localStorage.setItem('signtoast-input-settings', JSON.stringify(tuning)); } catch {}
-  if (tuning.mode === 'dwell' && calibration) { calibration = null; useMappingButton.hidden = true; ui.setCalibration('Dwell assist is using your current mapping. Hold over Test click to practice.', 0); }
+  if (tuning.mode !== 'pinch' && calibration) { calibration = null; useMappingButton.hidden = true; ui.setCalibration('Dwell is using your current mapping. Hold over Test click to practice; Calibrate maps a comfortable range.', 0); }
   else if (calibration) beginCalibration();
-  ui.setStatus(`Input tuned: ${tuning.sensitivity}, ${tuning.mode === 'dwell' ? 'dwell assist' : 'pinch'}, ${tuning.hoverMs} ms hover. Release your hands, then try Test click.`);
+  ui.setStatus(mode === 'one-hand' ? 'One-hand dwell: keep your pointer hand visible, hold over controls, then move off buttons to rearm. No pinch needed.' : `Input tuned: ${tuning.sensitivity}, ${tuning.mode === 'dwell' ? 'dwell assist' : 'pinch'}, ${tuning.hoverMs} ms hover. Release your hands, then try Test click.`);
 }
 ui.tuningSensitivity.addEventListener('change', changeTuning);
 ui.tuningActivation.addEventListener('change', changeTuning);
@@ -501,7 +566,20 @@ recordButton.addEventListener('click', async () => {
     else { const blob = await recording.stop(); recording = null; recordButton.textContent = 'Record demo'; const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'SignToAST-demo.webm'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); ui.setStatus('Demo recording downloaded.'); }
   } catch (error) { ui.setStatus(error instanceof Error ? error.message : 'Recording failed.'); }
 });
-ui.metricsExportButton.addEventListener('click', () => downloadJSON('SignToAST-measurements.json', { capturedAt: new Date().toISOString(), backend: tracking.backend, camera: tracking.stats, recognition: 'MediaPipe + temporal gesture rules', notes: 'Browser timings; not physical motion-to-action latency.', metrics: measurements.summary(), presentation: presentation.diagnostics, viewport: viewport.diagnostics }));
+ui.metricsExportButton.addEventListener('click', () => downloadJSON('SignToAST-measurements.json', { capturedAt: new Date().toISOString(), backend: tracking.backend, camera: tracking.stats, cameraInfo: tracking.cameraInfo, inputMode: tuning.mode, recognition: 'MediaPipe + temporal gesture rules', notes: 'Rolling browser timings; not physical motion-to-action latency. A completed fixed-window benchmark is exported separately.', metrics: measurements.summary(), benchmark: benchmarkResult, presentation: presentation.diagnostics, viewport: viewport.diagnostics }));
+performanceUI.runButton.addEventListener('click', () => {
+  if (!cameraRunning || !tracking.active) return;
+  benchmarkResult = null; benchmark.start(performance.now());
+  benchmarkContext = structuredClone({ startedAt: new Date().toISOString(), backend: tracking.backend, cameraInfo: tracking.cameraInfo, inputMode: tuning.mode, pointerHand: profile.dominantHand });
+  performanceUI.status(benchmark.status(performance.now()), null, true);
+  ui.setStatus('Benchmark started: 3 s warm-up, then 20 s measured input. Show hands and use the actual scene.');
+});
+performanceUI.exportButton.addEventListener('click', () => {
+  if (benchmarkResult) downloadJSON('SignToAST-benchmark.json', benchmarkResult);
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') interruptBenchmark('the benchmark tab was backgrounded');
+});
 let resetArmedUntil = 0;
 ui.resetButton.addEventListener('click', () => {
   if (projectOpening || projectPicking) return;
@@ -515,7 +593,14 @@ setInterval(() => {
 setInterval(() => {
   const metrics = measurements.summary();
   const value = (key: string) => metrics[key] ? `${metrics[key].p95.toFixed(1)} ms` : '—';
-  ui.setMetrics({ render: metrics.render_frame_ms ? `${Math.round(1000 / metrics.render_frame_ms.p50)} fps` : '—', camera: `${tracking.stats.cameraFps.toFixed(0)} fps`, tracking: `${tracking.stats.trackingFps.toFixed(0)} fps`, landmark: value('landmark_ms'), compiler: value('rules_to_draft_ms'), geometry: value('boolean_ms'), dropped: String(tracking.stats.droppedFrames), backend: tracking.backend });
+  ui.setMetrics({ render: renderFPS ? `${Math.round(renderFPS)} fps` : '—', camera: `${tracking.stats.cameraFps.toFixed(0)} fps`, tracking: `${tracking.stats.trackingFps.toFixed(0)} fps`, landmark: value('landmark_ms'), compiler: value('rules_to_draft_ms'), geometry: value('boolean_ms'), dropped: String(tracking.stats.droppedFrames), backend: tracking.backend });
+  const now = performance.now();
+  const status = benchmark.status(now);
+  if (status.phase === 'warmup' || status.phase === 'recording') benchmark.add('document_visible', document.visibilityState === 'visible' ? 1 : 0, now);
+  if (status.phase === 'complete' && !benchmarkResult) {
+    benchmarkResult = benchmark.finish(now, { ...benchmarkContext, capturedAt: new Date().toISOString(), recognition: 'MediaPipe + temporal gesture rules', pipeline: 'One tracking bitmap in flight; latest pending metadata only; CAD render budget 60 FPS', units: { rates: 'frames/second', timing: 'milliseconds' }, rateDefinition: 'Tracking and rendering average FPS use actual completed observations divided by the fixed 20-second window. Camera FPS contains reported one-second rate samples, which may straddle window boundaries.', timingDefinition: 'Video callback-to-handler ends after main-thread preview handling; excludes physical motion, exposure, gesture dwell, display scanout, and Boolean completion. Boolean and command-completion samples, if present, are separate.' });
+  }
+  performanceUI.status(status, benchmarkResult, cameraRunning);
 }, 500);
 
 async function initialize() {

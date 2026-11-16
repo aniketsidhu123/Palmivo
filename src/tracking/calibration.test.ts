@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CalibrationSession } from './calibration';
+import { DEFAULT_PROFILE } from './gestures';
 import type { TrackedHand, TrackingFrame } from '../shared/types';
 
 function hand(side: 'Left' | 'Right', ratio: number, dx = 0, dy = 0): TrackedHand {
@@ -67,5 +68,58 @@ describe('calibration session', () => {
     const progress = session.update({ timestamp: 30, width: 640, height: 480, inferenceMs: 0, hands: [hand('Right', 1.2, 0.15, 0.15)] });
     expect(progress.bothHandsVisible).toBe(false); expect(progress.rangeReady).toBe(true);
     expect(progress.pinchCycles).toBe(0);
+  });
+});
+
+describe('one-hand range-only calibration', () => {
+  const sample = (timestamp: number, offset: number, side: 'Left' | 'Right' = 'Right'): TrackingFrame => ({
+    timestamp, width: 640, height: 480, inferenceMs: 0, hands: [hand(side, 0.1, offset, offset)],
+  });
+  it('calibrates comfortable range without an offhand, open-palm pose or pinch cycles', () => {
+    const session = new CalibrationSession(DEFAULT_PROFILE, { singleHand: true });
+    let progress;
+    for (let index = 0; index < 12; index++) progress = session.update(sample(index * 40, index % 2 ? 0.1 : -0.1));
+    expect(progress).toMatchObject({ samples: 12, pointerVisible: true, bothHandsVisible: false, otherHandVerified: false,
+      pinchCycles: 0, rangeReady: true });
+    const profile = session.finish();
+    expect(profile.maxX - profile.minX).toBeGreaterThanOrEqual(0.25);
+    expect(profile.maxY - profile.minY).toBeGreaterThanOrEqual(0.25);
+    expect(profile.pinchClose).toBe(DEFAULT_PROFILE.pinchClose);
+    expect(profile.pinchOpen).toBe(DEFAULT_PROFILE.pinchOpen);
+  });
+  it('still requires enough samples and useful movement in both axes', () => {
+    const insufficient = new CalibrationSession(DEFAULT_PROFILE, { singleHand: true });
+    for (let index = 0; index < 11; index++) insufficient.update(sample(index * 40, index % 2 ? 0.2 : -0.2));
+    expect(() => insufficient.finish()).toThrow(/comfortable area/);
+    const stationary = new CalibrationSession(DEFAULT_PROFILE, { singleHand: true });
+    for (let index = 0; index < 12; index++) stationary.update(sample(index * 40, 0));
+    expect(() => stationary.finish()).toThrow(/comfortable area/);
+  });
+  it('rejects wrong and ambiguous identities and supports a configured left pointer', () => {
+    const session = new CalibrationSession({ ...DEFAULT_PROFILE, dominantHand: 'Left' }, { singleHand: true });
+    expect(session.update(sample(0, 0)).samples).toBe(0);
+    const ambiguous = sample(40, 0, 'Left'); ambiguous.hands.push(hand('Left', 1.2));
+    expect(session.update(ambiguous)).toMatchObject({ samples: 0, pointerVisible: false });
+    for (let index = 0; index < 12; index++) session.update(sample(80 + index * 40, index % 2 ? 0.1 : -0.1, 'Left'));
+    expect(session.finish().dominantHand).toBe('Left');
+  });
+  it('does not count duplicate or out-of-order samples or let them enlarge the range', () => {
+    const session = new CalibrationSession(DEFAULT_PROFILE, { singleHand: true });
+    session.update(sample(100, 0));
+    for (const time of [100, 99, 20]) expect(session.update(sample(time, 0.3)).samples).toBe(1);
+    const progress = session.update(sample(140, 0));
+    expect(progress.samples).toBe(2); expect(progress.rangeReady).toBe(false);
+  });
+  it('rejects invalid landmarks and confidence and reset clears all range evidence', () => {
+    const session = new CalibrationSession(DEFAULT_PROFILE, { singleHand: true });
+    const incomplete = sample(0, 0); incomplete.hands[0].landmarks.pop();
+    const nonfinite = sample(40, 0); nonfinite.hands[0].landmarks[8].x = NaN;
+    const uncertain = sample(80, 0); uncertain.hands[0].score = 0.1;
+    const degenerate = sample(100, 0); degenerate.hands[0].landmarks[9] = { ...degenerate.hands[0].landmarks[0] };
+    for (const invalid of [incomplete, nonfinite, uncertain, degenerate]) expect(session.update(invalid)).toMatchObject({ samples: 0, pointerVisible: false });
+    for (let index = 0; index < 12; index++) session.update(sample(120 + index * 40, index % 2 ? 0.1 : -0.1));
+    expect(() => session.finish()).not.toThrow();
+    session.reset(); expect(() => session.finish()).toThrow(/comfortable area/);
+    expect(session.update(sample(0, 0)).samples).toBe(1);
   });
 });

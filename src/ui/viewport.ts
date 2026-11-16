@@ -7,13 +7,16 @@ interface MeshEntry {
   recipe: Solid['recipe'];
 }
 
+export const RENDER_BUDGET_FPS = 60;
+const RENDER_INTERVAL_MS = 1000 / RENDER_BUDGET_FPS;
+
 /** Renderer has no authority to commit edits. All preview transforms come from the controller. */
 export class CADViewport {
   readonly renderer: THREE.WebGLRenderer;
   readonly camera = new THREE.PerspectiveCamera(34, 1, .1, 1500);
   readonly scene = new THREE.Scene();
   onFrame?: (frameMs: number) => void;
-  readonly diagnostics = { structuralUpdates: 0, previewUpdates: 0, outlineCreations: 0, geometryCreations: 0 };
+  readonly diagnostics = { structuralUpdates: 0, previewUpdates: 0, outlineCreations: 0, geometryCreations: 0, renderedFrames: 0, renderBudgetFps: RENDER_BUDGET_FPS };
   private readonly host: HTMLElement;
   private readonly solids = new Map<string, MeshEntry>();
   private readonly solidGroup = new THREE.Group();
@@ -24,7 +27,8 @@ export class CADViewport {
   private outline: THREE.BoxHelper | null = null;
   private outlinedMesh: THREE.Object3D | null = null;
   private frame = 0;
-  private lastTime = 0;
+  private lastRenderedAt: number | null = null;
+  private nextRenderTime: number | null = null;
   private disposed = false;
   private state: ControllerState | null = null;
   private readonly floor: THREE.Mesh;
@@ -34,19 +38,22 @@ export class CADViewport {
     this.host = host;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setClearColor(0x142b2d, 1);
+    this.renderer.setClearColor(0x102029, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Static CAD scenes can reuse their shadow map while hand inference uses the GPU.
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
     this.renderer.domElement.setAttribute('aria-label', 'Interactive solid modelling viewport');
     this.renderer.domElement.tabIndex = 0;
     host.append(this.renderer.domElement);
 
-    this.scene.fog = new THREE.FogExp2(0x142b2d, .0045);
-    this.scene.add(new THREE.HemisphereLight(0xcdf2e1, 0x263e43, 2.7));
-    const key = new THREE.DirectionalLight(0xe2ffdf, 3.2);
+    this.scene.fog = new THREE.FogExp2(0x102029, .0045);
+    this.scene.add(new THREE.HemisphereLight(0xe7ece9, 0x263b4a, 2.3));
+    const key = new THREE.DirectionalLight(0xfff1db, 3.4);
     key.position.set(25, 65, 50);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
@@ -54,20 +61,20 @@ export class CADViewport {
     key.shadow.bias = -.0003;
     key.shadow.normalBias = .05;
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x73b0bb, 2.6);
+    const rim = new THREE.DirectionalLight(0x83aac6, 2.1);
     rim.position.set(-60, 10, -35); this.scene.add(rim);
-    const fill = new THREE.DirectionalLight(0xe4d5ae, 1.2);
+    const fill = new THREE.DirectionalLight(0xbed4e2, .95);
     fill.position.set(65, -5, 40); this.scene.add(fill);
 
-    this.floor = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: 0x142c2c, roughness: 1, metalness: 0 }));
+    this.floor = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: 0x12232c, roughness: 1, metalness: 0 }));
     this.floor.rotation.x = -Math.PI / 2;
     this.floor.position.y = -17;
     this.floor.receiveShadow = true;
     this.scene.add(this.floor);
-    this.grid = new THREE.GridHelper(400, 80, 0x456c5f, 0x294b43);
+    this.grid = new THREE.GridHelper(400, 80, 0x486171, 0x29434f);
     this.grid.position.y = -16.98;
     this.grid.material.transparent = true;
-    this.grid.material.opacity = .5;
+    this.grid.material.opacity = .45;
     this.scene.add(this.grid);
     this.scene.add(this.solidGroup);
 
@@ -75,7 +82,7 @@ export class CADViewport {
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(host);
     this.resize();
-    this.animate(0);
+    this.animate(performance.now());
   }
 
   private resize(): void {
@@ -87,12 +94,26 @@ export class CADViewport {
 
   private animate = (time: number): void => {
     if (this.disposed) return;
-    const elapsed = time - this.lastTime;
-    this.lastTime = time;
-    if (time && elapsed > 0) this.onFrame?.(elapsed);
-    this.renderer.render(this.scene, this.camera);
+    this.renderAt(time);
     this.frame = requestAnimationFrame(this.animate);
   };
+
+  private renderAt(time: number): void {
+    if (!Number.isFinite(time) || this.lastRenderedAt !== null && time <= this.lastRenderedAt) return;
+    // Correct against the original deadline instead of starting another full interval
+    // after each callback. This avoids a 60 Hz display degenerating into 30 Hz.
+    if (this.nextRenderTime !== null && time + .01 < this.nextRenderTime) return;
+    const elapsed = this.lastRenderedAt === null ? null : time - this.lastRenderedAt;
+    this.renderer.render(this.scene, this.camera);
+    this.diagnostics.renderedFrames++;
+    this.lastRenderedAt = time;
+    if (this.nextRenderTime === null) this.nextRenderTime = time + RENDER_INTERVAL_MS;
+    else {
+      const periods = Math.floor(Math.max(0, time - this.nextRenderTime) / RENDER_INTERVAL_MS) + 1;
+      this.nextRenderTime += periods * RENDER_INTERVAL_MS;
+    }
+    if (elapsed !== null) this.onFrame?.(elapsed);
+  }
 
   update(state: ControllerState, meshes: Map<string, GeometryMesh>): void {
     if (this.disposed) return;
@@ -111,7 +132,7 @@ export class CADViewport {
         if (entry) this.disposeEntry(entry);
         const geometry = source ? this.fromMesh(source) : this.previewGeometry(solid);
         this.diagnostics.geometryCreations++;
-        const material = new THREE.MeshStandardMaterial({ color: solid.color || '#bce8cc', roughness: .5, metalness: .12, side: THREE.FrontSide, flatShading: true });
+        const material = new THREE.MeshStandardMaterial({ color: solid.color || '#bce8cc', roughness: .58, metalness: .08, side: THREE.FrontSide, flatShading: true });
         const mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = true; mesh.receiveShadow = true;
         mesh.userData.solidId = solid.id;
@@ -126,20 +147,21 @@ export class CADViewport {
       mesh.scale.setScalar(scale);
       const isPreview = state.draft?.kind === 'create' && state.draft.solid.id === solid.id;
       const isCutter = state.draft?.kind === 'subtract' && state.draft.cutterId === solid.id;
-      mesh.material.color.set(isCutter ? '#ef9f83' : solid.color || '#bce8cc');
+      mesh.material.color.set(isCutter ? '#f58b72' : solid.color || '#bce8cc');
       const transparent = isPreview || isCutter;
       const depthWrite = !isCutter;
       const materialFlagsChanged = mesh.material.transparent !== transparent || mesh.material.depthWrite !== depthWrite;
       mesh.material.transparent = transparent;
       mesh.material.opacity = isCutter ? .43 : isPreview ? .76 : 1;
       mesh.material.depthWrite = depthWrite;
-      mesh.material.emissive.set(isPreview ? '#153c26' : '#000000');
+      mesh.material.emissive.set(isPreview ? '#142c2c' : '#000000');
       if (materialFlagsChanged) mesh.material.needsUpdate = true;
       mesh.updateMatrixWorld(true);
     }
     const outlinedId = state.draft?.kind === 'create' ? state.draft.solid.id : state.selectedId;
     this.updateOutline(outlinedId ? this.solids.get(outlinedId)?.mesh ?? null : null);
     this.updateFloor();
+    this.renderer.shadowMap.needsUpdate = true;
   }
 
   /** Hot path: the controller draft identity and scene are unchanged. */
@@ -151,12 +173,17 @@ export class CADViewport {
     if (draft?.kind !== 'move' && draft?.kind !== 'scale') return;
     const mesh = this.solids.get(draft.targetId)?.mesh;
     if (!mesh) return;
+    const changed = draft.kind === 'move'
+      ? mesh.position.x !== draft.position[0] || mesh.position.y !== draft.position[1] || mesh.position.z !== draft.position[2]
+      : mesh.scale.x !== draft.uniformScale;
+    if (!changed) return;
     if (draft.kind === 'move') mesh.position.set(...draft.position);
     else mesh.scale.setScalar(draft.uniformScale);
     mesh.updateMatrixWorld(true);
     // No geometry, material, or helper allocations while the hands manipulate a draft.
     this.outline?.update();
     this.updateFloor();
+    this.renderer.shadowMap.needsUpdate = true;
   }
 
   private updateFloor(): void {
@@ -175,10 +202,10 @@ export class CADViewport {
   private updateOutline(selected: THREE.Object3D | null): void {
     if (!selected) { this.disposeOutline(); return; }
     if (!this.outline) {
-      this.outline = new THREE.BoxHelper(selected, 0xb8dea2);
+      this.outline = new THREE.BoxHelper(selected, 0xb8f2cf);
       this.diagnostics.outlineCreations++;
       this.outline.material.transparent = true;
-      this.outline.material.opacity = .38;
+      this.outline.material.opacity = .46;
       this.scene.add(this.outline);
     } else if (this.outlinedMesh !== selected) this.outline.setFromObject(selected);
     else this.outline.update();

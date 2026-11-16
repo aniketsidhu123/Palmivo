@@ -1,0 +1,46 @@
+{
+  "mode": "baseline",
+  "active": false,
+  "warmupMs": 2000,
+  "measuredMs": 247037.24500000477,
+  "settings": {
+    "width": 640,
+    "height": 480,
+    "frameRate": 30,
+    "facingMode": "user"
+  },
+  "capabilities": {
+    "frameRate": {
+      "max": 30,
+      "min": 0
+    },
+    "width": {
+      "max": 1280,
+      "min": 1
+    },
+    "height": {
+      "max": 720,
+      "min": 1
+    }
+  },
+  "rawState": "MediaStreamTrackProcessor active",
+  "video": {
+    "frames": 3729,
+    "fps": 15.094889841408035,
+    "intervalsMs": {
+      "samples": 1800,
+      "p50": 66.64999999999418,
+      "p95": 78.9199999999837
+    }
+  },
+  "raw": {
+    "frames": 3738,
+    "fps": 15.131321594846671,
+    "intervalsMs": {
+      "samples": 1800,
+      "p50": 64.23999999463558,
+      "p95": 80.53499999642372
+    }
+  },
+  "notes": "Camera delivery only; no landmarks, gesture inference or physical action latency. No video frames are retained."
+}

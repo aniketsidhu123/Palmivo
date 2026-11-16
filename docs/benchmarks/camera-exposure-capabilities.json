@@ -1,0 +1,69 @@
+{
+  "mode": "baseline",
+  "active": false,
+  "warmupMs": 2000,
+  "measuredMs": 253937.625,
+  "settings": {
+    "width": 640,
+    "height": 480,
+    "frameRate": 30,
+    "facingMode": "user",
+    "exposureMode": "continuous",
+    "exposureTime": 312.5,
+    "exposureCompensation": 64,
+    "brightness": 0
+  },
+  "capabilities": {
+    "frameRate": {
+      "max": 30,
+      "min": 0
+    },
+    "width": {
+      "max": 1280,
+      "min": 1
+    },
+    "height": {
+      "max": 720,
+      "min": 1
+    },
+    "exposureMode": [
+      "continuous",
+      "manual"
+    ],
+    "exposureTime": {
+      "min": 9.765625,
+      "max": 2500,
+      "step": 9.765625
+    },
+    "exposureCompensation": {
+      "min": 0,
+      "max": 128,
+      "step": 1
+    },
+    "brightness": {
+      "min": -64,
+      "max": 64,
+      "step": 1
+    }
+  },
+  "rawState": "MediaStreamTrackProcessor active",
+  "video": {
+    "frames": 3728,
+    "fps": 14.680770523863883,
+    "intervalsMs": {
+      "samples": 1800,
+      "p50": 66.64999999999418,
+      "p95": 78.85499999998137
+    }
+  },
+  "raw": {
+    "frames": 3834,
+    "fps": 15.098195866012372,
+    "intervalsMs": {
+      "samples": 1800,
+      "p50": 64.28499999642372,
+      "p95": 80.27999998629093
+    }
+  },
+  "notes": "Camera delivery only; no landmarks, gesture inference or physical action latency. No video frames are retained."
+}

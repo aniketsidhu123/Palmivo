@@ -8,6 +8,8 @@ export const DEFAULT_PROFILE: CalibrationProfile = {
   pinchClose: 0.32, pinchOpen: 0.52,
 };
 
+export interface GestureRecognizerOptions { singleHand?: boolean }
+
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 const validHand = (hand: TrackedHand) => hand.score >= 0.5 && hand.landmarks.length === 21 &&
   hand.landmarks.every(point => Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z));
@@ -92,28 +94,40 @@ export class GestureRecognizer {
   private rawCursor: { x: number; y: number } | null = null;
   private lastTime: number | null = null;
   private previousWrists: { dominant: Landmark; other: Landmark } | null = null;
+  private previousPointerWrist: Landmark | null = null;
+  private singleHand: boolean;
 
-  constructor(profile: CalibrationProfile = DEFAULT_PROFILE) { this.profile = sanitizeProfile(profile); }
+  constructor(profile: CalibrationProfile = DEFAULT_PROFILE, options: GestureRecognizerOptions = {}) {
+    this.profile = sanitizeProfile(profile); this.singleHand = options.singleHand === true;
+  }
   setProfile(profile: CalibrationProfile): void { this.profile = sanitizeProfile(profile); this.reset(); }
+  setSingleHand(enabled: boolean): void {
+    if (this.singleHand === enabled) return;
+    this.singleHand = enabled; this.reset();
+  }
   reset(): void {
     this.dominant.reset(); this.other.reset(); this.lastValid = null; this.stableSince = null;
     this.openSince = null; this.lastOpenAt = null; this.ready = false; this.cursor = null; this.rawCursor = null; this.lastTime = null;
     this.interrupted = false; this.lastProcessedFrame = null;
     this.previousWrists = null;
+    this.previousPointerWrist = null;
   }
 
   missing(timestamp: number): GestureOutput {
     const lost = this.lastValid === null || timestamp - this.lastValid >= TRACKING_GAP_MS;
     this.interrupted = true; this.dominant.interrupt(); this.other.interrupt();
-    if (lost) this.suspend();
-    // A single missing frame stops this sample's controls, but does not force the presenter
-    // through another neutral hold. A genuine gap still requires full reacquisition.
+    // Dwell has no deliberate pinch-release gate, so even a brief loss must acquire
+    // a fresh stable pointer before its countdown can begin again.
+    if (lost || this.singleHand) this.suspend();
+    // In the two-hand mode, one missing sample does not force another neutral hold.
+    // A genuine gap still requires full reacquisition in either mode.
     return this.output(timestamp, false, false, 0, false, lost, false);
   }
 
   private suspend(): void {
     this.ready = false; this.stableSince = null; this.openSince = null; this.lastOpenAt = null;
     this.previousWrists = null; this.dominant.interrupt(); this.other.interrupt();
+    this.previousPointerWrist = null;
   }
 
   process(frame: TrackingFrame): GestureOutput {
@@ -128,6 +142,7 @@ export class GestureRecognizer {
     const hands = frame.hands.filter(validHand);
     // Never assign by screen x: crossings must not silently exchange hand roles.
     const dominantHands = hands.filter(hand => hand.handedness === this.profile.dominantHand);
+    if (this.singleHand) return dominantHands.length === 1 ? this.processSingleHand(frame, dominantHands[0]) : this.missing(timestamp);
     const otherHands = hands.filter(hand => hand.handedness !== this.profile.dominantHand);
     if (dominantHands.length !== 1 || otherHands.length !== 1) return this.missing(timestamp);
     const dominantHand = dominantHands[0], otherHand = otherHands[0];
@@ -161,7 +176,31 @@ export class GestureRecognizer {
     }
     const otherOpen = this.openSince !== null;
 
-    const tip = dominantHand.landmarks[8];
+    this.updateCursor(dominantHand, timestamp);
+    const separation = distance(dominantHand.landmarks[8], otherHand.landmarks[8], aspect);
+    return this.output(timestamp, !resumed && !wasPinched && this.dominant.pinched && this.ready,
+      !resumed && wasPinched && !this.dominant.pinched && this.ready, separation, otherOpen, false, true, dominantRatio, otherRatio);
+  }
+
+  /** Optional one-hand dwell requires visibility and identity, never a finger pose. */
+  private processSingleHand(frame: TrackingFrame, hand: TrackedHand): GestureOutput {
+    const { timestamp } = frame;
+    const wrist = hand.landmarks[0];
+    // Preserve the nondegenerate-skeleton check; the ratio's value never gates a pose.
+    const ratio = pinchRatio(hand, frame.width, frame.height);
+    if (!Number.isFinite(ratio)) return this.missing(timestamp);
+    if (this.previousPointerWrist && this.lastValid !== null && timestamp - this.lastValid < TRACKING_GAP_MS &&
+      distance(wrist, this.previousPointerWrist, frame.height / frame.width) > 0.4) return this.missing(timestamp);
+    this.previousPointerWrist = { ...wrist }; this.lastValid = timestamp;
+    this.stableSince ??= timestamp;
+    this.ready = timestamp - this.stableSince >= 300;
+    this.interrupted = false;
+    this.updateCursor(hand, timestamp);
+    return this.output(timestamp, false, false, 0, false, false, true, ratio);
+  }
+
+  private updateCursor(hand: TrackedHand, timestamp: number): void {
+    const tip = hand.landmarks[8];
     const raw = {
       x: clamp((1 - tip.x - this.profile.minX) / (this.profile.maxX - this.profile.minX)),
       y: clamp((tip.y - this.profile.minY) / (this.profile.maxY - this.profile.minY)),
@@ -171,23 +210,20 @@ export class GestureRecognizer {
     const alpha = 1 - Math.exp(-dt / 90);
     this.cursor = this.cursor ? { x: this.cursor.x + alpha * (raw.x - this.cursor.x), y: this.cursor.y + alpha * (raw.y - this.cursor.y) } : raw;
     this.lastTime = timestamp;
-    const separation = distance(dominantHand.landmarks[8], otherHand.landmarks[8], aspect);
-    return this.output(timestamp, !resumed && !wasPinched && this.dominant.pinched && this.ready,
-      !resumed && wasPinched && !this.dominant.pinched && this.ready, separation, otherOpen, false, true, dominantRatio, otherRatio);
   }
 
   private output(timestamp: number, started: boolean, released: boolean, separation: number, otherOpen: boolean, lost: boolean, valid = true, dominantRatio?: number, otherRatio?: number): GestureOutput {
     const trackingReady = valid && this.ready;
     return {
       timestamp, cursor: this.cursor ? { ...this.cursor } : null,
-      dominantPinched: this.dominant.pinched, otherPinched: this.other.pinched,
-      pinchStarted: started, pinchReleased: released,
-      toolbarArmed: trackingReady && this.openSince !== null && timestamp - this.openSince >= 250,
-      bothPinched: trackingReady && this.dominant.pinched && this.other.pinched,
+      dominantPinched: !this.singleHand && this.dominant.pinched, otherPinched: !this.singleHand && this.other.pinched,
+      pinchStarted: !this.singleHand && started, pinchReleased: !this.singleHand && released,
+      toolbarArmed: trackingReady && (this.singleHand || this.openSince !== null && timestamp - this.openSince >= 250),
+      bothPinched: !this.singleHand && trackingReady && this.dominant.pinched && this.other.pinched,
       separation, trackingReady, trackingLost: lost, otherOpen,
-      dominantRatio, otherRatio, pinchClosing: trackingReady && dominantRatio !== undefined && dominantRatio < this.profile.pinchClose,
-      pinchOpening: trackingReady && this.dominant.pinched && dominantRatio !== undefined && dominantRatio >= this.profile.pinchOpen,
-      otherPinchOpening: trackingReady && this.other.pinched && otherRatio !== undefined && otherRatio >= this.profile.pinchOpen,
+      dominantRatio, otherRatio, pinchClosing: !this.singleHand && trackingReady && dominantRatio !== undefined && dominantRatio < this.profile.pinchClose,
+      pinchOpening: !this.singleHand && trackingReady && this.dominant.pinched && dominantRatio !== undefined && dominantRatio >= this.profile.pinchOpen,
+      otherPinchOpening: !this.singleHand && trackingReady && this.other.pinched && otherRatio !== undefined && otherRatio >= this.profile.pinchOpen,
       rawCursor: valid && this.rawCursor ? { ...this.rawCursor } : undefined,
     };
   }
