@@ -77,7 +77,7 @@ function validateSavedAST(ast: unknown): void {
 }
 export function validateDocument(document: unknown): asserts document is SceneDocument {
   record(document, 'Unsupported project format.');
-  assert(document.schemaVersion === 1 && document.units === 'mm', 'Unsupported project format. Use a SignToAST version 1 project in mm.');
+  assert(document.schemaVersion === 1 && document.units === 'mm', 'Unsupported project format. Use a Palmivo version 1 project in mm.');
   fields(document, ['schemaVersion', 'units', 'revision', 'solids', 'commands'], 'project');
   assert(typeof document.revision === 'number', 'Invalid scene revision.');
   assert(Number.isSafeInteger(document.revision) && document.revision >= 0, 'Invalid scene revision.');

@@ -1,7 +1,7 @@
 """Independent binary STL audit using only Python's standard library.
 
 Usage: python qa/verify_stl.py file.stl --dimensions 28 42 56 --through-hole
-This reads downloaded bytes, without importing any SignToAST exporter code.
+This reads downloaded bytes, without importing any Palmivo exporter code.
 """
 import argparse
 from collections import Counter, defaultdict

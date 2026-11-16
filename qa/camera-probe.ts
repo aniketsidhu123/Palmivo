@@ -143,7 +143,7 @@ q('#probe-baseline').addEventListener('click', () => void start(false));
 q('#probe-fast').addEventListener('click', () => void start(true));
 q('#probe-manual').addEventListener('click', () => void start(true, true));
 q('#probe-stop').addEventListener('click', () => void stop());
-q('#probe-download').addEventListener('click', () => downloadJSON('SignToAST-camera-probe.json', report()));
+q('#probe-download').addEventListener('click', () => downloadJSON('Palmivo-camera-probe.json', report()));
 setInterval(draw, 250);
 window.addEventListener('beforeunload', () => { void stop(); });
 draw();

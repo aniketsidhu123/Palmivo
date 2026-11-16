@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const excludedFolders = ['.git', '.agents', '.codex', 'node_modules', '.pnpm-store', '__pycache__', '.pytest_cache'];
 const treeOptions = { recursive: true, filter: source => !/\.(log|pyc|pyo|tmp|temp)$/i.test(source) && !path.relative(root, source).split(path.sep).some(part => excludedFolders.includes(part.toLowerCase())) };
-const out = path.join(root, 'release/SignToAST');
-const source = path.join(root, 'release/SignToAST-Source');
+const out = path.join(root, 'release/Palmivo');
+const source = path.join(root, 'release/Palmivo-Source');
 const productionRoot = path.resolve(out, 'dist');
 const managedRoots = [productionRoot, path.resolve(out, 'docs'), path.resolve(source, 'docs'), path.resolve(source, 'qa')];
 function checkManagedPath(target) {
@@ -49,7 +49,7 @@ for (const file of await readdir(bin)) if (file === 'node.exe' || file.endsWith(
   try { unchanged = (await readFile(from)).equals(await readFile(to)); } catch { /* First package. */ }
   if (!unchanged) await cp(from, to);
 }
-await writeFile(path.join(out, 'package.json'), '{"private":true,"type":"module"}\n');
+await writeFile(path.join(out, 'package.json'), '{"name":"palmivo","private":true,"type":"module"}\n');
 console.log(`Portable offline release created at ${out}`);
 await mkdir(source, { recursive: true });
 for (const folder of ['src', 'scripts', 'public', 'docs', 'examples', 'qa']) await cp(path.join(root, folder), path.join(source, folder), treeOptions);

@@ -52,6 +52,7 @@ viewport.onFrame = ms => {
 };
 let profile: CalibrationProfile = { ...DEFAULT_PROFILE };
 let hasSavedCalibration = false;
+// Keep the established local keys so the rename preserves calibration and input settings.
 try { const saved = localStorage.getItem('signtoast-calibration'); if (saved) { profile = sanitizeProfile(JSON.parse(saved)); hasSavedCalibration = true; } } catch { /* Defaults work without storage. */ }
 let calibratedProfile = { ...profile };
 type Sensitivity = 'standard' | 'easier' | 'precise' | 'calibrated';
@@ -485,7 +486,7 @@ function changeTuning() {
 ui.tuningSensitivity.addEventListener('change', changeTuning);
 ui.tuningActivation.addEventListener('change', changeTuning);
 ui.tuningHover.addEventListener('change', changeTuning);
-ui.exportButton.addEventListener('click', () => downloadJSON('SignToAST-project.json', controller.exportDocument()));
+ui.exportButton.addEventListener('click', () => downloadJSON('Palmivo-project.json', controller.exportDocument()));
 function exportSelectedSTL(source: 'pointer' | 'keyboard' | 'gesture-rules' = 'pointer') {
   const state = controller.state;
   if (!initialized || projectOpening || projectPicking || state.busy || state.paused || state.draft || calibration && source === 'gesture-rules') return;
@@ -553,7 +554,7 @@ snapshotButton.id = 'save-preview'; snapshotButton.textContent = 'Snapshot'; sna
 ui.metricsExportButton.before(snapshotButton);
 snapshotButton.addEventListener('click', () => viewport.renderer.domElement.toBlob(blob => {
   if (!blob) return;
-  const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'SignToAST-preview.png'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'Palmivo-preview.png'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }));
 const recordButton = document.createElement('button');
 recordButton.className = 'quiet-button'; recordButton.id = 'record-demo'; recordButton.textContent = 'Record demo';
@@ -563,10 +564,10 @@ let recording: ReturnType<typeof recordDemo> | null = null;
 recordButton.addEventListener('click', async () => {
   try {
     if (!recording) { recording = recordDemo(viewport.renderer.domElement, () => controller.getDraftAST() || controller.state.lastCommand?.ast || null); recordButton.textContent = 'Stop recording'; ui.setStatus('Recording CAD canvas + AST locally. Webcam and audio are excluded.'); }
-    else { const blob = await recording.stop(); recording = null; recordButton.textContent = 'Record demo'; const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'SignToAST-demo.webm'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); ui.setStatus('Demo recording downloaded.'); }
+    else { const blob = await recording.stop(); recording = null; recordButton.textContent = 'Record demo'; const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'Palmivo-demo.webm'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); ui.setStatus('Demo recording downloaded.'); }
   } catch (error) { ui.setStatus(error instanceof Error ? error.message : 'Recording failed.'); }
 });
-ui.metricsExportButton.addEventListener('click', () => downloadJSON('SignToAST-measurements.json', { capturedAt: new Date().toISOString(), backend: tracking.backend, camera: tracking.stats, cameraInfo: tracking.cameraInfo, inputMode: tuning.mode, recognition: 'MediaPipe + temporal gesture rules', notes: 'Rolling browser timings; not physical motion-to-action latency. A completed fixed-window benchmark is exported separately.', metrics: measurements.summary(), benchmark: benchmarkResult, presentation: presentation.diagnostics, viewport: viewport.diagnostics }));
+ui.metricsExportButton.addEventListener('click', () => downloadJSON('Palmivo-measurements.json', { capturedAt: new Date().toISOString(), backend: tracking.backend, camera: tracking.stats, cameraInfo: tracking.cameraInfo, inputMode: tuning.mode, recognition: 'MediaPipe + temporal gesture rules', notes: 'Rolling browser timings; not physical motion-to-action latency. A completed fixed-window benchmark is exported separately.', metrics: measurements.summary(), benchmark: benchmarkResult, presentation: presentation.diagnostics, viewport: viewport.diagnostics }));
 performanceUI.runButton.addEventListener('click', () => {
   if (!cameraRunning || !tracking.active) return;
   benchmarkResult = null; benchmark.start(performance.now());
@@ -575,7 +576,7 @@ performanceUI.runButton.addEventListener('click', () => {
   ui.setStatus('Benchmark started: 3 s warm-up, then 20 s measured input. Show hands and use the actual scene.');
 });
 performanceUI.exportButton.addEventListener('click', () => {
-  if (benchmarkResult) downloadJSON('SignToAST-benchmark.json', benchmarkResult);
+  if (benchmarkResult) downloadJSON('Palmivo-benchmark.json', benchmarkResult);
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') interruptBenchmark('the benchmark tab was backgrounded');

@@ -7,12 +7,12 @@ export interface SolidSTLExport {
   measurements: SolidMeasurements;
 }
 
-/** STL stores unitless surface coordinates. SignToAST writes its CAD coordinates in mm. */
+/** STL stores unitless surface coordinates. Palmivo writes its CAD coordinates in mm. */
 export function exportSolidSTL(solid: Solid, mesh: GeometryMesh): SolidSTLExport {
   const measurements = measureSolid(solid, mesh);
   const data = new ArrayBuffer(84 + measurements.triangles * 50);
   const view = new DataView(data);
-  new Uint8Array(data, 0, 80).set(new TextEncoder().encode('SignToAST binary STL; coordinates in millimetres (mm)'));
+  new Uint8Array(data, 0, 80).set(new TextEncoder().encode('Palmivo binary STL; coordinates in millimetres (mm)'));
   view.setUint32(80, measurements.triangles, true);
   let offset = 84;
   for (let triangle = 0; triangle < mesh.indices.length; triangle += 3) {

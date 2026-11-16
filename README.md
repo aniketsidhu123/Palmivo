@@ -1,10 +1,10 @@
-# SignToAST
+# Palmivo
 
 **Local gesture CAD with a typed command compiler and exportable solid geometry.**
 
-SignToAST turns webcam hand input into editable CAD operations. Users create solids, adjust their dimensions and position, preview changes, and explicitly commit each operation. MediaPipe hand landmarks and temporal gesture rules drive the interface. A typed Abstract Syntax Tree (AST) connects those interactions to real Manifold Boolean geometry.
+Palmivo turns webcam hand input into editable CAD operations. Users create solids, adjust their dimensions and position, preview changes, and explicitly commit each operation. MediaPipe hand landmarks and temporal gesture rules drive the interface. A typed Abstract Syntax Tree (AST) connects those interactions to real Manifold Boolean geometry.
 
-![SignToAST workspace](docs/media/workspace-mvp.jpg)
+![Palmivo workspace](docs/media/palmivo-workspace.jpg)
 
 ## Features
 
@@ -69,7 +69,7 @@ The geometry AST contains `Create`, `Move`, `Scale`, and `Subtract`. Selection, 
 
 ### Portable Windows application
 
-1. Extract the complete `SignToAST` release folder.
+1. Extract the complete `Palmivo` release folder.
 2. Run `start-demo.cmd` and keep its console open.
 3. Open **http://127.0.0.1:4173** in Chrome or Edge.
 
@@ -125,6 +125,8 @@ The inspector displays **Final size**, **Preview size**, or **Target size** for 
 Enable the camera, select the pointer hand, and calibrate the comfortable movement range. Pinch mode also calibrates three pinch/release cycles and checks the other palm. Use **Test click** before editing. Input settings and mapping persist locally.
 
 ### Projects and exports
+
+Existing project JSON, saved scenes, and calibration continue to load.
 
 - **Export project / Open project:** preserve editable recipes, transforms, and committed AST history in versioned JSON.
 - **Export STL:** save the selected committed solid with its position and scale applied. Import the coordinates as millimetres in a viewer or slicer.
@@ -189,7 +191,7 @@ pnpm build
 pnpm package
 ~~~
 
-The packager creates `release/SignToAST` with the application, runtime, and launcher, plus `release/SignToAST-Source` with source and local assets. On Windows, `scripts/archive.ps1` writes both ZIP archives and their SHA-256 checksums.
+The packager creates `release/Palmivo` with the application, runtime, and launcher, plus `release/Palmivo-Source` with source and local assets. On Windows, `scripts/archive.ps1` writes both ZIP archives and their SHA-256 checksums.
 
 ## Technical documentation
 

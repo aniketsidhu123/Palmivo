@@ -1,6 +1,6 @@
 # Architecture
 
-SignToAST separates sensing, interaction, command compilation, and geometry execution. Gesture hypotheses do not directly mutate CAD meshes.
+Palmivo separates sensing, interaction, command compilation, and geometry execution. Gesture hypotheses do not directly mutate CAD meshes.
 
 ```mermaid
 flowchart LR

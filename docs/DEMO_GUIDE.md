@@ -59,7 +59,7 @@ Select a committed solid and verify its name and **FINAL SIZE** in the inspector
 
 The binary STL includes the selected solid's committed position and scale. It omits the scene grid, outlines, previews, and removed cutters. The export does not modify the scene or consume Undo history.
 
-STL stores unitless surface coordinates. SignToAST writes millimetre values, so choose **mm** in the receiving tool and confirm the expected dimensions. Prepare print settings in the slicer. Keep the SignToAST **project JSON** for editable recipes, transforms, and AST history, because STL stores the surface without that information or colors.
+STL stores unitless surface coordinates. Palmivo writes millimetre values, so choose **mm** in the receiving tool and confirm the expected dimensions. Prepare print settings in the slicer. Keep the Palmivo **project JSON** for editable recipes, transforms, and AST history, because STL stores the surface without that information or colors.
 
 The included `examples/scaled-box-mm.stl` is **28 × 42 × 56 mm**. `examples/through-hole-mm.stl` retains the centered radius 3 mm through-hole after subtraction. Both come from actual browser downloads and pass the separate binary-file checks. The source-only **http://127.0.0.1:5173/qa/stl.html** viewer uses STLLoader to inspect a chosen STL independently of the app's scene. `qa/verify_stl.py` checks dimensions, normals, surface closure/winding, and the centered bore using Python's standard library.
 
@@ -68,7 +68,7 @@ The included `examples/scaled-box-mm.stl` is **28 × 42 × 56 mm**. `examples/th
 This is a setup and recovery workflow using an ordinary mouse click and the system file picker. It works with the camera off and with Wi-Fi disabled.
 
 1. Export the current committed project if you want to keep it separately. Commit or Cancel any active preview before opening another file.
-2. Click **Open project** and choose a locally exported **version 1 SignToAST JSON** file, no larger than **8 MiB**. The supplied example project can also be used.
+2. Click **Open project** and choose a locally exported **version 1 Palmivo JSON** file, no larger than **8 MiB**. The supplied example project can also be used.
 3. Review the filename and the solid/command counts. **Keep current scene** or **Escape** cancels. **Open saved project** replaces the current workspace after the geometry rebuild succeeds.
 4. Inspect the restored solids, transforms, and committed AST. Camera calibration stays the same. The opened project is autosaved locally and can be exported again.
 5. Make a new edit and use Undo to verify it. The prior exported command log remains visible in the file, while Undo snapshots start with edits made after opening; pre-open Undo history is not restored.

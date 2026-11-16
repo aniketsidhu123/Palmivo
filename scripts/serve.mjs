@@ -4,7 +4,8 @@ import { stat, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 const root = path.resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
-const port = Number(process.env.SIGNTOAST_PORT || 4173);
+// Retain the previous environment variable for existing local launch configurations.
+const port = Number(process.env.PALMIVO_PORT || process.env.SIGNTOAST_PORT || 4173);
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.task': 'application/octet-stream', '.png': 'image/png' };
 const server = http.createServer(async (req, res) => {
   try {
@@ -18,9 +19,9 @@ const server = http.createServer(async (req, res) => {
     res.end(req.method === 'HEAD' ? undefined : await readFile(file));
   } catch { res.writeHead(404); res.end('File not found'); }
 });
-server.on('error', error => { console.error(`Cannot start SignToAST: ${error.message}`); process.exitCode = 1; });
+server.on('error', error => { console.error(`Cannot start Palmivo: ${error.message}`); process.exitCode = 1; });
 server.listen(port, '127.0.0.1', () => {
   const url = `http://127.0.0.1:${port}`;
-  console.log(`SignToAST is running locally at ${url}\nKeep this window open. Press Ctrl+C to stop.`);
+  console.log(`Palmivo is running locally at ${url}\nKeep this window open. Press Ctrl+C to stop.`);
   if (process.argv.includes('--open') && process.platform === 'win32') execFile('rundll32.exe', ['url.dll,FileProtocolHandler', url], () => {});
 });

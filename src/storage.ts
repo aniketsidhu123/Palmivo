@@ -1,6 +1,7 @@
 import type { SceneDocument } from './shared/types';
 async function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
+    // Preserve the established database so the Palmivo rename retains saved projects.
     const request = indexedDB.open('signtoast-local', 1);
     request.onupgradeneeded = () => request.result.createObjectStore('projects');
     request.onsuccess = () => resolve(request.result);

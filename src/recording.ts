@@ -13,7 +13,7 @@ export function recordDemo(viewport: HTMLCanvasElement, command: () => CommandAS
   const started = performance.now();
   const draw = () => {
     ctx.fillStyle = '#f5f4ed'; ctx.fillRect(0, 0, 1280, 800);
-    ctx.fillStyle = '#152b2c'; ctx.font = 'bold 32px Arial'; ctx.fillText('signtoast.', 28, 47);
+    ctx.fillStyle = '#152b2c'; ctx.font = 'bold 32px Arial'; ctx.fillText('palmivo.', 28, 47);
     ctx.font = '13px Consolas, monospace'; ctx.fillText('LOCAL SPATIAL COMPILER / INTERACTION DEMO', 240, 41);
     ctx.fillStyle = '#142b2d'; ctx.fillRect(24, 76, 884, 658);
     const scale = Math.min(884 / viewport.width, 658 / viewport.height);

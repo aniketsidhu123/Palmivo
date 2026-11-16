@@ -1,6 +1,6 @@
 # Third-party notices
 
-SignToAST uses the following third-party components. Project dependencies are pinned in the package manifest and lockfile. License information here identifies bundled components; upstream copyright and license notices remain applicable.
+Palmivo uses the following third-party components. Project dependencies are pinned in the package manifest and lockfile. License information here identifies bundled components; upstream copyright and license notices remain applicable.
 
 | Component | Pinned version / source | License |
 | --- | --- | --- |

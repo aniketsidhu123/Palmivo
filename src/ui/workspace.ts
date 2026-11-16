@@ -78,9 +78,9 @@ const toolData: Array<[Tool, string, string, string]> = [
 export function createUI(root: HTMLElement): WorkspaceUI {
   root.innerHTML = `
     <header class="app-header">
-      <a class="brand" href="#" aria-label="SignToAST workspace"><span class="brand-mark"><i></i><i></i><i></i></span><span>sign<span class="brand-to">to</span>ast<span class="brand-period">.</span></span></a>
+      <a class="brand" href="#" aria-label="Palmivo workspace"><span class="brand-mark"><i></i><i></i><i></i></span><span>palmivo<span class="brand-period">.</span></span></a>
       <div class="header-context"><span class="header-divider"></span><span>GESTURE CAD / LOCAL COMPILER</span><span class="version-tag">BUILD / 06</span></div>
-      <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>All computation stays here</span><button id="open-project" class="quiet-button" aria-label="Open project" title="Reopen a SignToAST project JSON">${icon('open')}<span>Open project</span></button><button id="export-project" class="quiet-button" aria-label="Export project">${icon('export')}<span>Export project</span></button><input id="project-file" type="file" accept=".json,application/json" aria-label="Open SignToAST project JSON" hidden></div>
+      <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>All computation stays here</span><button id="open-project" class="quiet-button" aria-label="Open project" title="Reopen a Palmivo project JSON">${icon('open')}<span>Open project</span></button><button id="export-project" class="quiet-button" aria-label="Export project">${icon('export')}<span>Export project</span></button><input id="project-file" type="file" accept=".json,application/json" aria-label="Open Palmivo project JSON" hidden></div>
     </header>
     <main class="workspace">
       <section class="workspace-heading"><div><div class="eyebrow">LOCAL SPATIAL WORKSPACE</div><h1>Shape with intent<span>.</span></h1></div><div class="readiness" id="assets-status"><span class="readiness-icon">↻</span><div><strong>Preparing local assets</strong><span>Checking geometry & tracking runtime</span></div></div></section>
@@ -267,7 +267,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     text(pause.querySelector<HTMLElement>('span')!, state.paused ? 'Resume' : 'Pause');
     const open = q<HTMLButtonElement>('#open-project');
     open.disabled = state.busy || !!state.draft;
-    open.title = state.busy ? 'Wait for the current geometry operation to finish' : state.draft ? 'Commit or Cancel the current draft before opening a project' : 'Reopen a SignToAST project JSON';
+    open.title = state.busy ? 'Wait for the current geometry operation to finish' : state.draft ? 'Commit or Cancel the current draft before opening a project' : 'Reopen a Palmivo project JSON';
     const stlExport = q<HTMLButtonElement>('#export-stl');
     const transform = state.draft?.kind === 'scale' || state.draft?.kind === 'move' ? state.draft : null;
     transformPanel.hidden = !transform;

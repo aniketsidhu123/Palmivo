@@ -3,8 +3,8 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $releaseRoot = Join-Path $projectRoot 'release'
 $bundles = @(
-    @{ Folder = 'SignToAST'; Archive = 'SignToAST-Windows.zip' },
-    @{ Folder = 'SignToAST-Source'; Archive = 'SignToAST-Source.zip' }
+    @{ Folder = 'Palmivo'; Archive = 'Palmivo-Windows.zip' },
+    @{ Folder = 'Palmivo-Source'; Archive = 'Palmivo-Source.zip' }
 )
 foreach ($bundle in $bundles) {
     $bundleRoot = (Resolve-Path -LiteralPath (Join-Path $releaseRoot $bundle.Folder)).Path
@@ -25,5 +25,5 @@ foreach ($bundle in $bundles) {
     finally { $check.Dispose() }
     Get-Item -LiteralPath $archivePath | Select-Object Name, Length
 }
-Get-FileHash -LiteralPath (Join-Path $releaseRoot 'SignToAST-Windows.zip'), (Join-Path $releaseRoot 'SignToAST-Source.zip') -Algorithm SHA256 |
+Get-FileHash -LiteralPath (Join-Path $releaseRoot 'Palmivo-Windows.zip'), (Join-Path $releaseRoot 'Palmivo-Source.zip') -Algorithm SHA256 |
     Select-Object Hash, Path | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot 'checksums.json')
