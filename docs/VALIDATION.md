@@ -9,7 +9,7 @@ The compiler/geometry subsystem was verified with **22 passing tests** during im
 | Check | Status / result |
 | --- | --- |
 | Complete TypeScript check | Passed |
-| Complete automated test suite | 200 tests passed across sixteen source test files after Prototype 04 features |
+| Complete automated test suite | 231 tests passed across eighteen source test files after Prototype 05 features |
 | Production build and asset verification | Passed; six tracking assets SHA-256 verified, geometry WASM emitted and initialized |
 | Production browser smoke test | Ten consecutive pointer/keyboard CAD sequences passed; no browser errors |
 | Portable launcher smoke test | Included Node v24.22.1 launched the packaged server; packaged app passed Create/Subtract/Undo and reload restoration on port 4180 |
@@ -111,4 +111,24 @@ Release scope for the November 16 evening submission: precise creation presets a
 The [precise example project](../examples/precise-through-hole-project.json) was exported by the tested browser and reopened without changing any scene or command data. The command log survives reopening; Undo snapshots start with edits made in the new session. [Project review screenshot](media/project-open-review.jpg), [precise controls screenshot](media/precise-size-presets.jpg), and [reopened portable model](media/prototype04-reopened.jpg) show the actual camera-off application.
 
 A fresh physical gesture rehearsal, Wi-Fi-disabled reload, and ten-minute soak on the presenter's final setup remain the final hardware checks. The recognizer remains MediaPipe + temporal gesture rules.
+
+## Prototype 05 STL export and dimensions — November 15–16, 2026
+
+- All **231 tests across 18 source files** passed, including 31 new measurement/export tests. TypeScript, production bundling, and local-asset verification passed.
+- The inspector derives selected-solid X/Y/Z bounds from authoritative geometry, including committed uniform scale. Scale and Move drafts show Preview size, subtraction shows Target size, and Cancel restores committed dimensions. Measurements stay cached during continuous previews.
+- Export writes one selected committed solid as binary STL. It applies the solid's outer transform once, recomputes normals from stored float32 vertices, sanitizes the filename, and excludes previews, grid, outlines, and removed operands. Export is blocked during drafts, busy/pause states, project opening, and missing selection. It does not add an AST command or change scene history.
+- All six default/precise landmark-pipeline scenarios at simulated 13/30/60 FPS now include STL export activation. They check one download result per fresh pinch, draft/pause rejection, independent Three.js STLLoader bounds and signed-volume checks, ray tests through the open bore and adjacent material, and byte-identical export after JSON reopening.
+- Three complete production-browser pointer/keyboard demos passed Create Box, precise dimensions, 1.4× Scale, Create Cylinder, Subtract, Undo, Move/Cancel. Additional browser checks passed preview dimensions/Cancel, paused/draft export rejection, keyboard Enter and Space export, project reopening, reload restoration, unchanged AST/revision, and no console errors.
+- On November 16, the refreshed portable folder passed an additional complete demo using its bundled Node runtime on port 4184, including real STL download, Undo, Move/Cancel, repeated subtraction, and reload restoration. Both the final dimensions and exported bytes match the independently verified example. No browser errors were recorded. This brings Prototype 05 browser demo coverage to four complete runs, separate from the six simulated gesture scenarios.
+- The desktop Export and subtract Commit controls passed center-point hit checks. At 768 × 900, the page has no horizontal overflow, Export has a 44 px target, and the inspector retains the 28 × 42 × 56 mm dimensions.
+- Actual browser downloads are distributed as [scaled box STL](../examples/scaled-box-mm.stl) and [through-hole STL](../examples/through-hole-mm.stl). A separate Python standard-library reader checked binary length/count, finite vertices, unit normals, winding, welded-edge closure, bounds, signed volume, Euler characteristic, and rays through the bore. It imports no SignToAST export code.
+
+| Downloaded file | Final X/Y/Z in mm | Triangles | Signed volume in mm³ | Surface audit |
+| --- | --- | --- | --- | --- |
+| Scaled box | 28 × 42 × 56 | 12 | 65,856.000 | Closed, consistent winding, Euler 2 |
+| Through-hole result | 28 × 42 × 56 | 144 | 64,282.792 | Closed, consistent winding, Euler 0; center ray 0 hits, adjacent stock ray 2 hits |
+
+The exported through-hole also loaded in the [separate STLLoader viewer](media/stl-independent-viewer.jpg), which has no application controller or exporter dependency. The actual [inspector and export controls](media/stl-dimensions-inspector.jpg) show the final measurements. The [independent byte/geometry audit](media/stl-verification.json) records both downloaded STL files. This verifies an exchange mesh; no slicer run or physical print was performed. STL stores surface coordinates without encoded units, so import these numeric coordinates as millimetres. Keep project JSON for recipes and AST history.
+
+Current tests include no new physical gesture latency, camera-throughput, or live-hand claim. A final presenter rehearsal, Wi-Fi-disabled reload, and controlled ten-minute soak remain hardware checks before submission.
 

@@ -14,7 +14,7 @@
 
 Browser camera permission needs an ordinary click during setup. It does not have to be part of the hands-free demonstration.
 
-This Prototype 04 release targets submission on **November 16, 2026 evening**. Rehearse the fixed sequence below first; use the precise-size variation only after the default sequence is reliable.
+This Prototype 05 release targets submission on **November 16, 2026 evening**. It adds STL export and final mesh dimensions. Rehearse the fixed sequence below first; use the precise-size variation only after the default sequence is reliable. Frontend polish remains the next session's focus.
 
 ## Fixed demonstration sequence
 
@@ -35,18 +35,31 @@ Aim for two to three minutes. Use slow, deliberate gestures and release pinches 
 
 When the cylinder is occluded by the box, select its scene-list entry rather than trying to reach an obscured surface. During a draft, finish or cancel it before choosing another operation.
 
+Optionally insert an export after step 8 and before Undo: show the selected result's **FINAL SIZE**, activate **Export STL**, and open the downloaded file in the prepared viewer or slicer. This demonstrates a reusable surface model created through the gesture workflow. Keep the stage sequence short by preparing the viewer before presenting.
+
 ## Precise-size variation
 
 The default demo above is unchanged. To show the new presets in a second pass:
 
 1. Choose **Box**. In **Precise size**, keep **X 20**, choose **Y 30**, and choose **Z 40**. Use the normal open-other-hand, hover, fresh-pinch gesture, or click the buttons. Dwell assist also works on these controls.
 2. Verify **20 × 30 × 40 mm** and the exact `[20, 30, 40]` dimensions in the draft Create AST. Commit the box.
-3. Choose **Scale**, use both hands to reach approximately **1.4×**, release to freeze, then Commit. At exactly 1.4×, the resulting dimensions are **28 × 42 × 56 mm**.
+3. Choose **Scale**, use both hands to reach approximately **1.4×**, release to freeze, then Commit. At exactly 1.4×, the inspector's **FINAL SIZE** is **28 × 42 × 56 mm**. The **PREVIEW SIZE** label distinguishes unfinished Move/Scale changes from committed dimensions.
 4. Choose **Cylinder**, choose **Radius 3**, and leave **Height 60**. Confirm **R 3 × H 60 mm** and `[3, 60]` in its draft AST, then Commit.
 5. Select the box as Target, choose Subtract, choose the cylinder as Cutter, and Commit. The centered 60 mm cylinder extends through the box's 56 mm Z depth at exactly 1.4×.
-6. Show the subtraction AST and Undo. Try a different preset during another creation draft, then Cancel to show that a size change remains a preview until committed.
+6. Show the subtraction AST and the resulting **FINAL SIZE**. Optionally activate **Export STL** before Undo. While choosing operands, **TARGET SIZE** refers to the existing target, not a guessed Boolean result.
+7. Choose Undo. Try a different preset during another creation draft, then Cancel to show that a size change remains a preview until committed.
 
 Box X, Y, and Z can each be set independently to **20, 30, or 40 mm**. Cylinder radius supports **3, 5, or 8 mm** and height supports **20, 40, or 60 mm**. Presets set base dimensions; uniform scaling multiplies them afterward. These are illustrative CAD units, not dimensions measured from the webcam.
+
+## Export a usable surface model
+
+Select a committed solid and verify its name and **FINAL SIZE** in the inspector. Activate **Export STL** with the existing open-other-hand, hover, fresh-pinch action, Dwell assist, or a normal mouse click. A focused Export STL button also supports **Enter** or **Space**. Export is disabled with no selection, during drafts or geometry jobs, and while editing is paused.
+
+The binary STL includes the selected solid's committed position and scale. It omits the scene grid, outlines, previews, and removed cutters. The export does not modify the scene or consume Undo history.
+
+STL stores unitless surface coordinates. SignToAST writes millimetre values, so choose **mm** in the receiving tool and confirm the expected dimensions. Prepare print settings in the slicer. Keep the SignToAST **project JSON** for editable recipes, transforms, and AST history, because STL stores the surface without that information or colors.
+
+The included `examples/scaled-box-mm.stl` is **28 × 42 × 56 mm**. `examples/through-hole-mm.stl` retains the centered radius 3 mm through-hole after subtraction. Both come from actual browser downloads and pass the separate binary-file checks. The source-only **http://127.0.0.1:5173/qa/stl.html** viewer uses STLLoader to inspect a chosen STL independently of the app's scene. `qa/verify_stl.py` checks dimensions, normals, surface closure/winding, and the centered bore using Python's standard library.
 
 ## Reopen an exported project
 
@@ -85,12 +98,13 @@ Gesture editing is suspended while the picker and replacement review are open. C
 | Escape | Cancel draft |
 | Space | Pause / resume |
 | Ctrl+Z | Undo |
+| Enter / Space on focused Export STL | Download the selected committed surface |
 
 Use recovery controls openly if needed. They invoke the same controller and AST pipeline.
 
 ## Offline proof
 
-Before stage time, disable Wi-Fi and reload the production URL. Confirm that the app verifies assets, restores its scene, enables the camera, performs subtraction, and exports JSON. Reopen that exported file, confirm its saved dimensions and transforms, then reload once more to verify local autosave. A page that merely keeps running after disconnection is weaker evidence than a successful fresh reload.
+Before stage time, disable Wi-Fi and reload the production URL. Confirm that the app verifies assets, restores its scene, enables the camera, performs subtraction, and exports JSON and STL. Reopen the exported project JSON, confirm its saved dimensions and transforms, and export its selected solid as STL again. Reload once more to verify local autosave. A page that merely keeps running after disconnection is weaker evidence than a successful fresh reload.
 
 Local-asset readiness means the packaged files passed checks. It is not a network monitor. Do not describe that badge alone as proof that Wi-Fi is disabled.
 
@@ -98,7 +112,7 @@ Local-asset readiness means the packaged files passed checks. It is not a networ
 
 Record the actual app with the hand preview, AST panel, and diagnostics visible. Capture a complete successful sequence, including the subtraction result and Undo. Keep a backup recording available if the venue's camera or projection setup changes.
 
-Include the runnable folder, source/lockfile, example project, README, and measured performance export with the recording. Record demo captures the CAD canvas and AST locally, excluding webcam pixels and microphone audio. Use your normal screen recorder when you want the entire interface and hand preview in the final presenter demonstration.
+Include the runnable folder, source/lockfile, example project and STL files, README, and measured performance export with the recording. Record demo captures the CAD canvas and AST locally, excluding webcam pixels and microphone audio. Use your normal screen recorder when you want the entire interface and hand preview in the final presenter demonstration.
 
 State the implemented scope accurately: a constrained gesture-operated spatial compiler with real CAD execution. ST-GCN + CTC, general sign-language translation, and arbitrary viewpoint invariance are planned extensions. Any latency claim must name the measured stage and hardware.
 

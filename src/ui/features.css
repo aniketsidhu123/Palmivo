@@ -1,6 +1,17 @@
 /* Precise creation controls replace the selection panel while a primitive is a draft. */
 .header-actions{gap:10px}.header-actions .local-indicator{margin-right:10px}
 .quiet-button:disabled{opacity:.45}
+.solid-dimensions{padding:9px 0 8px}
+.solid-dimensions>div{display:flex;align-items:center;justify-content:space-between;gap:8px;font:7px var(--mono);color:#87957b}
+.solid-dimensions small{font:7px var(--mono);color:#9ca78e}
+.solid-dimensions>strong{display:block;margin-top:5px;font:11px var(--mono);font-weight:500;color:#365939;overflow-wrap:anywhere}
+.stl-export-button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:35px;width:100%;padding:7px 9px;border:1px solid #b6c9a7;border-radius:4px;background:#e6efdb;color:#335a37;font-size:10px;font-weight:600}
+.stl-export-button .icon{width:14px;height:14px}
+.stl-export-button small{font:7px var(--mono);font-weight:400;margin-left:auto;color:#78916b}
+.stl-export-button:hover:not(:disabled){background:#d5e6c6;border-color:#88aa72}
+.stl-export-button:disabled{opacity:.4;cursor:not-allowed}
+@media(min-width:851px){.inspector.has-selection .selected-panel{padding-top:10px;padding-bottom:9px}.inspector.has-selection .selected-name{margin-top:7px;margin-bottom:7px}.inspector.has-selection .pipeline{margin-top:12px;margin-bottom:12px}.inspector.has-selection .commit-note{display:none}}
+@media(max-width:850px){.solid-dimensions{padding-top:13px;padding-bottom:12px}.solid-dimensions>div,.solid-dimensions small{font-size:9px}.solid-dimensions>strong{font-size:14px;margin-top:7px}.stl-export-button{min-height:44px;font-size:12px}.stl-export-button small{font-size:9px}.stl-export-button .icon{width:17px;height:17px}}
 .size-presets{flex-shrink:0;border-bottom:1px solid var(--line);padding:10px 0}
 .preset-dimensions{font:10px var(--mono);color:#496544;margin:7px 0 8px}
 .preset-group{display:flex;flex-direction:column;gap:5px}

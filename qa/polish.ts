@@ -8,7 +8,7 @@ const ui = createUI(document.querySelector<HTMLElement>('#app')!);
 const viewport = new CADViewport(ui.viewportHost);
 const geometry = new GeometryClient();
 const controller = new Controller(geometry);
-controller.subscribe(state => { ui.update(state); viewport.update(state, controller.meshes); });
+controller.subscribe(state => { ui.update(state, controller.meshes); viewport.update(state, controller.meshes); });
 controller.beginCreate('Box'); await controller.commit(); controller.beginScale(); controller.updateScale(1.4);
 ui.setAssetsReady(true); ui.setCameraState(true); ui.setTracking('Simulated hand states for layout testing. No camera is accessed.');
 ui.setGestureFeedback({ hands: 'Fixture', pinch: 'Simulated dual pinch', gate: 'Open your other hand', target: 'No target', progress: 0 });

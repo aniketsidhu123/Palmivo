@@ -1,5 +1,6 @@
-import type { ControllerState, Draft, Tool } from '../shared/types';
+import type { ControllerState, Draft, GeometryMesh, Tool } from '../shared/types';
 import { SIZE_PRESETS } from '../core/presets';
+import { measureSolid, type SolidMeasurements } from '../core/solidMeasurements';
 import { CONFIRMATION_DURATION_MS, manipulationInstruction, resolveInstruction, type ManipulationFeedback } from './feedback';
 import './style.css';
 import './responsive.css';
@@ -36,6 +37,7 @@ export interface WorkspaceUI {
   cameraButton: HTMLButtonElement;
   calibrateButton: HTMLButtonElement;
   exportButton: HTMLButtonElement;
+  stlExportButton: HTMLButtonElement;
   openProjectButton: HTMLButtonElement;
   projectFileInput: HTMLInputElement;
   reviewProject(filename: string, solids: number, commands: number): Promise<boolean>;
@@ -46,7 +48,7 @@ export interface WorkspaceUI {
   tuningActivation: HTMLSelectElement;
   tuningHover: HTMLSelectElement;
   testGestureButton: HTMLButtonElement;
-  update(state: ControllerState): void;
+  update(state: ControllerState, meshes?: ReadonlyMap<string, GeometryMesh>): void;
   updatePreview(state: ControllerState): void;
   confirmAction(message: string, button?: HTMLButtonElement | null): void;
   setManipulationFeedback(kind: 'scale' | 'move', phase: 'ready' | 'active' | 'held' | 'paused', value?: number): void;
@@ -74,7 +76,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   root.innerHTML = `
     <header class="app-header">
       <a class="brand" href="#" aria-label="SignToAST workspace"><span class="brand-mark"><i></i><i></i><i></i></span><span>sign<span class="brand-to">to</span>ast<span class="brand-period">.</span></span></a>
-      <div class="header-context"><span class="header-divider"></span><span>SPATIAL COMPILER</span><span class="version-tag">PROTOTYPE / 04</span></div>
+      <div class="header-context"><span class="header-divider"></span><span>SPATIAL COMPILER</span><span class="version-tag">PROTOTYPE / 05</span></div>
       <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>All computation stays here</span><button id="open-project" class="quiet-button" title="Reopen a SignToAST project JSON">${icon('open')}<span>Open project</span></button><button id="export-project" class="quiet-button">${icon('export')}<span>Export project</span></button><input id="project-file" type="file" accept=".json,application/json" aria-label="Open SignToAST project JSON" hidden></div>
     </header>
     <main class="workspace">
@@ -90,7 +92,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
           <div class="inspector-title"><h2>Command inspector</h2><span class="small-index">02</span></div>
           <div class="pipeline"><span class="pipeline-active">INPUT</span><i>→</i><span id="pipeline-draft">DRAFT</span><i>→</i><span id="pipeline-ast">AST</span><i>→</i><span>SOLID</span></div>
           <div class="instruction-card"><div class="instruction-caption">${icon('hand')}<span>NEXT ACTION</span></div><p id="instruction">Choose a primitive to begin. Enable your camera when you're ready for gesture control.</p><div class="gesture-hint">Open other hand · point · pinch</div></div>
-          <section class="selected-panel"><div class="section-heading"><h3>Selected solid</h3><span id="selected-type">—</span></div><div id="selected-name" class="selected-name">Nothing selected</div><div class="property-grid"><span>POSITION <small>mm</small></span><strong id="selected-position">— / — / —</strong><span>UNIFORM SCALE</span><strong id="selected-scale">—</strong></div></section>
+          <section class="selected-panel"><div class="section-heading"><h3>Selected solid</h3><span id="selected-type">—</span></div><div id="selected-name" class="selected-name">Nothing selected</div><div class="property-grid"><span>POSITION <small>mm</small></span><strong id="selected-position">— / — / —</strong><span>UNIFORM SCALE</span><strong id="selected-scale">—</strong></div><div class="solid-dimensions" aria-label="Selected solid dimensions"><div><span id="dimensions-label">FINAL SIZE</span><small>X × Y × Z</small></div><strong id="selected-dimensions">—</strong></div><button id="export-stl" class="stl-export-button" aria-label="Export selected solid as STL" title="Select a committed solid to export" disabled>${icon('export')}<span>Export STL</span><small>mm coordinates</small></button></section>
           <section class="ast-panel"><div class="section-heading"><h3>Abstract syntax tree</h3><span id="ast-status" class="ast-status">NO COMMAND</span></div><div class="code-window"><div class="code-toolbar"><span><i></i><i></i><i></i></span><span>command.json</span><span>{ }</span></div><pre id="ast-code" aria-label="Command AST">{
   <span class="code-comment">// Your gestures become</span>
   <span class="code-comment">// structured instructions.</span>
@@ -176,6 +178,8 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   });
   const cursor = q('#gesture-cursor');
   let currentState: ControllerState | null = null;
+  let currentMeshes: ReadonlyMap<string, GeometryMesh> | undefined;
+  let selectedMeasurement: { id: string; mesh: GeometryMesh; scale: number; value: SolidMeasurements } | null = null;
   let selectedTool: Tool | null = null;
   let confirmation: { message: string; until: number; button: HTMLButtonElement | null } | null = null;
   let confirmationTimer: ReturnType<typeof setTimeout> | null = null;
@@ -214,6 +218,16 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     const scale = state.draft?.kind === 'scale' ? state.draft.uniformScale : selected?.scale;
     text(q('#selected-position'), position ? position.map(value => value.toFixed(0)).join(' / ') : '— / — / —');
     text(q('#selected-scale'), scale !== undefined ? `${scale.toFixed(2)}×` : '—');
+    const preview = state.draft && (state.draft.kind === 'move' || state.draft.kind === 'scale') && state.draft.targetId === selected?.id;
+    const dimensionLabel = state.draft?.kind === 'subtract' ? 'TARGET SIZE' : preview ? 'PREVIEW SIZE' : 'FINAL SIZE';
+    text(q('#dimensions-label'), dimensionLabel);
+    const measured = selectedMeasurement?.id === selected?.id ? selectedMeasurement : null;
+    const factor = preview && state.draft?.kind === 'scale' && measured ? state.draft.uniformScale / measured.scale : 1;
+    const dimensions = measured?.value.dimensions.map(value => value * factor);
+    const formatted = dimensions?.map(value => Number(value.toFixed(2)).toString());
+    const dimensionElement = q('#selected-dimensions');
+    text(dimensionElement, formatted ? `${formatted.join(' × ')} mm` : '—');
+    dimensionElement.setAttribute('aria-label', formatted ? `${dimensionLabel.toLowerCase()}: X ${formatted[0]}, Y ${formatted[1]}, Z ${formatted[2]} millimetres` : 'Dimensions unavailable');
     const ast = state.draft ? draftAST(state.draft) : state.lastCommand?.ast;
     const code = q('#ast-code');
     const nextCode = ast ? JSON.stringify(ast, null, 2) : '{\n  // Your gestures become\n  // structured instructions.\n}';
@@ -234,6 +248,9 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     const open = q<HTMLButtonElement>('#open-project');
     open.disabled = state.busy || !!state.draft;
     open.title = state.busy ? 'Wait for the current geometry operation to finish' : state.draft ? 'Commit or Cancel the current draft before opening a project' : 'Reopen a SignToAST project JSON';
+    const stlExport = q<HTMLButtonElement>('#export-stl');
+    stlExport.disabled = state.busy || state.paused || !!state.draft || !selectedMeasurement || selectedMeasurement.id !== state.selectedId;
+    stlExport.title = state.busy ? 'Wait for geometry execution to finish' : state.draft ? 'Commit or Cancel the preview before exporting STL' : state.paused ? 'Resume editing before exporting STL' : !selectedMeasurement ? 'Select a committed solid to export' : 'Export the selected committed surface with coordinates in millimetres. Keep project JSON for editable history.';
     const create = state.draft?.kind === 'create' ? state.draft : null;
     presetsPanel.hidden = !create;
     q('.inspector').classList.toggle('is-create-draft', !!create);
@@ -256,6 +273,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     handCanvas: q<HTMLCanvasElement>('#hand-overlay'), cameraButton,
     calibrateButton: q<HTMLButtonElement>('#calibrate-button'),
     exportButton: q<HTMLButtonElement>('#export-project'),
+    stlExportButton: q<HTMLButtonElement>('#export-stl'),
     openProjectButton: q<HTMLButtonElement>('#open-project'),
     projectFileInput: q<HTMLInputElement>('#project-file'),
     reviewProject(filename, solids, commands) {
@@ -272,9 +290,18 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     tuningActivation,
     tuningHover: q<HTMLSelectElement>('#gesture-hover'),
     testGestureButton: q<HTMLButtonElement>('#test-gesture'),
-    update(state) {
+    update(state, meshes) {
       currentState = state;
+      if (meshes !== undefined) currentMeshes = meshes;
+      const measuredSolid = state.scene.solids.find(solid => solid.id === state.selectedId);
+      const mesh = measuredSolid && currentMeshes?.get(measuredSolid.id);
+      if (!measuredSolid || !mesh) selectedMeasurement = null;
+      else if (selectedMeasurement?.id !== measuredSolid.id || selectedMeasurement.mesh !== mesh || selectedMeasurement.scale !== measuredSolid.scale) {
+        try { selectedMeasurement = { id: measuredSolid.id, mesh, scale: measuredSolid.scale, value: measureSolid(measuredSolid, mesh) }; }
+        catch { selectedMeasurement = null; }
+      }
       updateButtonStates();
+      q('.inspector').classList.toggle('has-selection', !!measuredSolid);
       text(q('#scene-revision'), `REV ${String(state.scene.revision).padStart(3, '0')}`);
       text(q('#solid-count'), `${state.scene.solids.length} solid${state.scene.solids.length === 1 ? '' : 's'}`);
       q('#empty-scene').hidden = !!(state.scene.solids.length || state.draft);

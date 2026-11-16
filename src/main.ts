@@ -11,6 +11,7 @@ import { PresentationCoordinator } from './core/presentation';
 import { recoverProject } from './core/recovery';
 import { getSizePreset } from './core/presets';
 import { MAX_PROJECT_FILE_BYTES, parseProjectFile } from './core/projectFile';
+import { exportSolidSTL } from './core/stlExport';
 import { createUI } from './ui/workspace';
 import { CADViewport } from './ui/viewport';
 import { loadProject, saveProject } from './storage';
@@ -84,7 +85,7 @@ useMappingButton.addEventListener('click', () => {
 });
 
 const presentation = new PresentationCoordinator({
-  full: state => { ui.update({ ...state, busy: state.busy || !initialized || projectOpening || projectPicking }); viewport.update(state, controller.meshes); },
+  full: state => { ui.update({ ...state, busy: state.busy || !initialized || projectOpening || projectPicking }, controller.meshes); viewport.update(state, controller.meshes); },
   renderPreview: state => viewport.updatePreview(state),
   preview: state => ui.updatePreview(state),
   persist: scene => { void saveProject(scene).catch(() => ui.setStatus('Local autosave unavailable. Export your project before closing.')); },
@@ -193,6 +194,9 @@ ui.viewportHost.addEventListener('wheel', event => {
 document.addEventListener('keydown', event => {
   if (projectOpening || projectPicking) return;
   if ((event.target as HTMLElement).matches('input, select, textarea') || event.repeat) return;
+  if (event.target === ui.stlExportButton && (event.key === 'Enter' || event.key === ' ')) {
+    event.preventDefault(); exportSelectedSTL('keyboard'); return;
+  }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); void runTool('undo', 'keyboard'); return; }
   const keys: Record<string, Tool> = { b: 'box', c: 'cylinder', v: 'select', m: 'move', s: 'scale', d: 'subtract', Escape: 'cancel', Enter: 'commit', ' ': 'pause' };
   const tool = keys[event.key]; if (tool) { event.preventDefault(); void runTool(tool, 'keyboard'); }
@@ -217,6 +221,7 @@ function resetActivation() {
 }
 function buttonId(button: HTMLButtonElement): string | null {
   if (button === ui.testGestureButton) return 'test:click';
+  if (button === ui.stlExportButton) return 'export:stl';
   if (button.dataset.sizePreset) return `preset:${button.dataset.sizePreset}`;
   const tool = [...ui.paletteButtons].find(([, element]) => element === button)?.[0];
   return tool ? `tool:${tool}` : button.dataset.solidId ? `solid:${button.dataset.solidId}` : null;
@@ -224,6 +229,7 @@ function buttonId(button: HTMLButtonElement): string | null {
 function resolveButton(id: string | null): HTMLButtonElement | null {
   if (!id) return null;
   if (id === 'test:click') return ui.testGestureButton;
+  if (id === 'export:stl') return ui.stlExportButton;
   if (id.startsWith('preset:')) return ui.sizePresetButtons.get(id.slice(7)) || null;
   if (id.startsWith('tool:')) return ui.paletteButtons.get(id.slice(5) as Tool) || null;
   return [...document.querySelectorAll<HTMLButtonElement>('[data-solid-id]')].find(button => button.dataset.solidId === id.slice(6)) || null;
@@ -300,6 +306,7 @@ function processGesture(output: GestureOutput) {
     const button = resolveButton(activation.activate);
     if (!eligible(button)) return;
     if (button === ui.testGestureButton) testClick('gesture');
+    else if (button === ui.stlExportButton) exportSelectedSTL('gesture-rules');
     else if (activation.activate.startsWith('tool:')) void runTool(activation.activate.slice(5) as Tool, 'gesture-rules');
     else if (button.dataset.sizePreset) chooseSizePreset(button.dataset.sizePreset, 'gesture-rules');
     else if (button.dataset.solidId) selectSolid(button.dataset.solidId, button);
@@ -414,19 +421,36 @@ ui.tuningSensitivity.addEventListener('change', changeTuning);
 ui.tuningActivation.addEventListener('change', changeTuning);
 ui.tuningHover.addEventListener('change', changeTuning);
 ui.exportButton.addEventListener('click', () => downloadJSON('SignToAST-project.json', controller.exportDocument()));
+function exportSelectedSTL(source: 'pointer' | 'keyboard' | 'gesture-rules' = 'pointer') {
+  const state = controller.state;
+  if (!initialized || projectOpening || projectPicking || state.busy || state.paused || state.draft || calibration && source === 'gesture-rules') return;
+  if (source !== 'gesture-rules') resetActivation();
+  const solid = state.scene.solids.find(item => item.id === state.selectedId);
+  const mesh = solid && controller.meshes.get(solid.id);
+  if (!solid || !mesh) { ui.setStatus('Select a committed solid before exporting STL.'); return; }
+  try {
+    const result = exportSolidSTL(solid, mesh);
+    const url = URL.createObjectURL(new Blob([result.data], { type: 'model/stl' }));
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = result.filename;
+    anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    ui.confirmAction('STL download started. Import coordinates as millimetres.', ui.stlExportButton);
+    ui.setStatus(`${result.filename}: ${result.measurements.dimensions.map(value => Number(value.toFixed(2))).join(' × ')} mm. Keep project JSON for editable history.`);
+  } catch (error) { ui.setStatus(`Could not export STL: ${error instanceof Error ? error.message : 'Invalid solid geometry.'}`); }
+}
+ui.stlExportButton.addEventListener('click', () => exportSelectedSTL());
 ui.openProjectButton.addEventListener('click', () => {
   if (!initialized || projectOpening || projectPicking || controller.state.busy || controller.state.draft) return;
   // Browser file access starts with this ordinary user click during project setup.
   ui.projectFileInput.value = '';
   projectPicking = true;
   moving = null; scaling = null; resetActivation(); ui.clearManipulationFeedback();
-  ui.update({ ...controller.state, busy: true });
+  ui.update({ ...controller.state, busy: true }, controller.meshes);
   try { ui.projectFileInput.click(); }
   catch { finishPicking(); ui.setStatus('The file picker could not open. Try Open project again.'); }
 });
 function finishPicking() {
   projectPicking = false; recognizer.reset(); resetActivation();
-  ui.update({ ...controller.state, busy: controller.state.busy || !initialized || projectOpening });
+  ui.update({ ...controller.state, busy: controller.state.busy || !initialized || projectOpening }, controller.meshes);
 }
 ui.projectFileInput.addEventListener('cancel', finishPicking);
 ui.projectFileInput.addEventListener('change', () => { finishPicking(); void openProject(); });
@@ -438,7 +462,7 @@ async function openProject() {
   }
   projectOpening = true;
   moving = null; scaling = null; resetActivation(); ui.clearManipulationFeedback();
-  ui.update({ ...controller.state, busy: true });
+  ui.update({ ...controller.state, busy: true }, controller.meshes);
   try {
     if (file.size > MAX_PROJECT_FILE_BYTES) throw Error('Project exceeds the 8 MB file limit.');
     const saved = parseProjectFile(await file.text());
@@ -456,7 +480,7 @@ async function openProject() {
   } finally {
     projectOpening = false; ui.projectFileInput.value = '';
     recognizer.reset(); resetActivation();
-    ui.update({ ...controller.state, busy: controller.state.busy || !initialized });
+    ui.update({ ...controller.state, busy: controller.state.busy || !initialized }, controller.meshes);
   }
 }
 const snapshotButton = document.createElement('button');
