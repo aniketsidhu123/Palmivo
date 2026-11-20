@@ -8,21 +8,20 @@ Use the `codex/inspect-aloud` branch in the Palmivo repository. In the Render Da
 
 | Render resource | Variable | Value to enter in Render |
 | --- | --- | --- |
-| **palmivo** web service | `RENDER_API_KEY` | An API key for the same Render workspace, with permission to start and read Workflow runs. |
-| **palmivo-inspection** Workflow | `ELEVENLABS_API_KEY` | A Text to Speech key from ElevenLabs with a credit quota set for the demo. |
+| **palmivo** web service | `RENDER_API_KEY` | A key for the same workspace with **Workflows → Read** and **Run workflow tasks → Run**. |
+| **palmivo-inspection** Workflow | `ELEVENLABS_API_KEY` | A scoped Text to Speech key from ElevenLabs with a credit quota. |
 | **palmivo-inspection** Workflow | `ELEVENLABS_VOICE_ID` | The ID of an English voice accessible to that ElevenLabs account. Copy the ID from **Voices**. |
 
 Render generates `PALMIVO_INSPECT_SECRET` and sets `PALMIVO_WORKFLOW_SLUG` from the Workflow resource. Enter credentials directly in Render. Confirm that your workspace has enough applicable Render credits for Workflow compute and temporary state before enabling inspection. The web service uses the free instance plan and the Workflow uses metered `flex` compute.
 
-[Render Blueprints](https://render.com/docs/infrastructure-as-code) · [Render Workflow billing](https://render.com/docs/workflows-limits) · [ElevenLabs API key restrictions](https://elevenlabs.io/docs/api-reference/authentication)
+[Render Blueprints](https://render.com/docs/infrastructure-as-code) · [Render API key permissions](https://render.com/docs/api-keys#workflows) · [Render Workflow billing](https://render.com/docs/workflows-limits) · [ElevenLabs API key restrictions](https://elevenlabs.io/docs/api-reference/authentication)
 
-### Verify and record the hosted demo
+### Verify the hosted workbench
 
 1. Copy the web service’s public HTTPS URL from the Render Dashboard. Open it in a fresh browser or on a second device.
 2. Choose **Try the bushing** and select the result. Choose **Inspect aloud**. Check the **20 × 20 × 40 mm** caption, hear the voice, and match the run ID to the completed Workflow in Render.
 3. Select **Scale**, increase the scale by **0.1×**, and **Commit**. Request another inspection. Verify **22 × 22 × 44 mm**, an open centre passage, and a new run ID. **Play again** reuses the received audio.
 4. Verify **Use my camera**, one TSM shortcut, Commit, Undo, STL export, and project reopening. Confirm the portable version still opens and models offline.
-5. Record a fresh hosted inspection with a screen recorder that captures system audio. Show the changed dimensions and completed Render run. Use the actual public app URL in the submission.
 
 The inspection panel reports time from inspection request to result and, when speech starts automatically, to audio playback. Record those times separately from webcam and gesture benchmarks.
 

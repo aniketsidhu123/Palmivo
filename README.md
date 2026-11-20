@@ -1,217 +1,120 @@
 # Palmivo
 
-**Local gesture CAD with a typed command compiler and exportable solid geometry.**
+Palmivo is a browser-based spatial CAD workbench. Use webcam gestures, a mouse, or a keyboard to create and edit solids. A typed command compiler turns each committed operation into Manifold geometry you can reopen as a Palmivo project or export as STL.
 
-Palmivo turns webcam hand input into editable CAD operations. Users create solids, adjust their dimensions and position, preview changes, and explicitly commit each operation. MediaPipe landmarks drive the gesture palette, and pretrained MIT Online TSM adds three optional tool shortcuts. A typed Abstract Syntax Tree (AST) connects those interactions to real Manifold Boolean geometry.
+[Open Palmivo](https://palmivo.onrender.com/) · [Controls and modelling](docs/DEMO_GUIDE.md) · [Model setup](docs/MODELS.md) · [Render deployment](docs/INSPECT_ALOUD.md)
 
 ![Palmivo workspace](docs/media/palmivo-workspace.jpg)
 
-## Features
+## Capabilities
 
-- **Two-hand gesture control:** a mirrored cursor, stable button targeting, pinch selection, XY dragging, and continuous uniform scaling.
-- **One-hand dwell:** command access without pinching or raising the other hand, with comfortable-range calibration and precise Move/Scale buttons.
-- **Solid modelling:** boxes, cylinders, selection, translation, scaling, and target-minus-cutter subtraction.
-- **Boolean Union:** fuse two committed solids into one through the same validated preview and Commit workflow. Union projects use format version 2. Version 1 projects remain readable.
-- **Exact dimensions:** independent primitive presets, final mesh measurements, 1 mm XY steps, and 0.1× scale steps.
-- **Explicit transactions:** separate Commit and Cancel, reversible previews, Pause, and a 20-snapshot Undo history.
-- **Inspectable compilation:** draft and committed ASTs, resolved object references, numeric validation, and scene revision checks.
-- **Editable projects:** IndexedDB autosave and versioned JSON export/reopening with recipes, transforms, and command history.
-- **STL handoff:** binary STL export of the selected committed solid with millimetre coordinates.
-- **Inspect aloud:** the hosted workbench can send the selected STL to Render Workflows for an independent mesh check and speak the measured result with ElevenLabs. A camera-optional bushing example opens directly in the workbench.
-- **Local execution:** bundled tracking models, JavaScript, and WASM. Camera processing and project storage stay on the device.
-- **Performance instrumentation:** camera and tracking rates, stage timings, a repeatable benchmark, and JSON measurement export.
-- **Pretrained shortcuts:** swipe left to open Box, swipe right to open Cylinder, and give a thumbs up to open Union. The model runs locally in ONNX Runtime Web when listening is armed. Use the regular palette for operand selection and Commit.
-- **Custom gesture pilot:** local landmark capture, optional shoulder features, a causal ST-GCN training pipeline, and browser streaming CTC replay with ONNX Runtime Web.
-- **Alternative input:** mouse and keyboard controls, a Test click counter, CAD snapshots, and canvas-plus-AST recording.
-
-## Architecture
-
-~~~mermaid
-flowchart LR
-    Camera[Webcam] --> Tracking[MediaPipe tracking worker]
-    Tracking --> Recognition[Temporal gesture rules]
-    Recognition --> Controller[Draft controller and validation]
-    Camera --> Shortcuts[MIT TSM shortcut worker]
-    Shortcuts --> Controller
-    Inputs[Mouse and keyboard] --> Controller
-    Controller --> Preview[Reversible Three.js preview]
-    Controller --> AST[Typed command AST]
-    AST --> Geometry[Manifold geometry worker]
-    Geometry --> Scene[Committed scene]
-    Scene --> View[Three.js viewport]
-    Scene --> Storage[IndexedDB and project JSON]
-    Scene --> Export[Binary STL]
-~~~
-
-One controller owns scene state. Every input method uses the same command path. Tracking keeps one image bitmap in flight and retains only the newest waiting frame metadata. CAD rendering has a 60 FPS budget and reuses static shadow maps. Move/Scale previews update transforms immediately while inspector work is coalesced.
-
-| Layer | Implementation |
+| Area | Features |
 | --- | --- |
-| Application | TypeScript, Vite, HTML/CSS |
-| Tracking | MediaPipe Tasks Vision 0.10.32, GPU worker with CPU fallback |
-| Recognition | Temporal gesture rules, pinch and dwell, optional MIT Online TSM via ONNX Runtime Web |
-| Rendering | Three.js 0.181.1, WebGL2 |
-| Solid geometry | Manifold 3D 3.3.2, WASM worker |
-| Persistence | IndexedDB and versioned project JSON |
-| Verification | Vitest, independent STL readers, browser QA |
+| Input | Two-hand pinch and drag, two-hand scaling, dwell assist, one-hand dwell, pointer and keyboard controls, and local calibration |
+| Gesture shortcuts | MediaPipe and temporal rules drive the palette. **Listen for tool** arms pretrained MIT Online TSM shortcuts for Box, Cylinder, and Union. |
+| CAD | Boxes and cylinders, exact size presets, 1 mm XY steps, 0.1× scale steps, Boolean Union and Subtract, and final mesh dimensions |
+| Commands | Typed AST inspection, reversible previews, explicit Commit and Cancel, Pause, and Undo |
+| Projects | IndexedDB autosave, versioned editable JSON, binary STL in millimetres, viewport screenshots, and local CAD recordings |
+| Inspect aloud | A Render Workflow checks the exported STL and ElevenLabs speaks the findings. The inspector shows the caption and run ID and offers replay and mute. |
 
-The geometry AST contains `Create`, `Move`, `Scale`, `Union`, and `Subtract`. Selection, Commit, Cancel, Pause, and Undo remain controller events.
+## Run Palmivo
 
-~~~json
-{
-  "commandId": "cmd-007",
-  "baseSceneRevision": 6,
-  "source": "gesture-rules",
-  "ast": {
-    "type": "Subtract",
-    "targetId": "box-01",
-    "cutterId": "cylinder-01",
-    "resultId": "solid-03"
-  }
-}
-~~~
+### Hosted app
 
-## Run
+Open [palmivo.onrender.com](https://palmivo.onrender.com/) in a WebGL2 browser. Choose **Try the bushing** to start without camera setup, or **Use my camera** to calibrate gesture controls. The example is **20 × 20 × 40 mm**. Choose **Scale → +0.1× → Commit** to produce **22 × 22 × 44 mm**.
 
-### Portable Windows application
+### Local development
 
-1. Extract the complete `Palmivo` release folder.
-2. Run `start-demo.cmd` and keep its console open.
-3. Open **http://127.0.0.1:4173** in Chrome or Edge.
+Use Node.js **24.22.1** and pnpm **12.21.0** to match the hosted build. Install dependencies once, prepare the browser assets, and start Vite.
 
-The portable folder includes Node.js and all runtime assets. The launcher starts the local server directly.
-
-The separate **Palmivo-Hybrid** candidate opens on **http://127.0.0.1:4181**. It includes the MIT TSM model, the flanged guide bushing example, Union, and the custom gesture capture and replay tools. See the [offline round guide](docs/OFFLINE_ROUND.md).
-
-### Hosted inspection
-
-Deploy the repository’s Render Blueprint to enable the live **Inspect aloud** panel. Follow the [deployment and verification guide](docs/INSPECT_ALOUD.md) to configure the Web Service, Render Workflow, and ElevenLabs voice.
-
-### Source development
-
-Use Node.js 22.12+ and pnpm.
-
-~~~sh
+```sh
 pnpm install --frozen-lockfile
-pnpm assets
+pnpm run assets
 pnpm dev
-~~~
+```
 
-Open **http://127.0.0.1:5173**. To run the production build:
+Open `http://127.0.0.1:5173`. For the local production server, run:
 
-~~~sh
-pnpm build
+```sh
+pnpm run build:hosted
 pnpm start
-~~~
+```
 
-## Interaction
+Open `http://127.0.0.1:4173`. The build serves all model and WASM files locally. `pnpm run build:hosted` checks the pinned MIT TSM export and bushing example. For a local preview of the hosted server, run `node server/host.mjs` and open `http://127.0.0.1:10000`.
 
-Changes remain drafts until **Commit**. Releasing a manipulation holds its preview. **Cancel** restores the committed scene.
+### Portable Windows release
 
-| Input mode | Button activation | Manipulation |
-| --- | --- | --- |
-| Pinch | Open the other palm, hover, then make a fresh pinch | Pinch-drag to Move; pinch both hands to Scale |
-| Dwell assist | Keep the other palm open and hold over a button | Continuous gestures or precise adjustment buttons |
-| One-hand dwell | Hold over a button with the pointer hand | Precise XY and scale buttons, without pinching |
+Extract `Palmivo-Hybrid-Windows.zip` and run `start-demo.cmd`. The packaged runtime and assets serve the app at `http://127.0.0.1:4181`. Camera tracking, TSM inference, CAD, and project exports work offline. Live **Inspect aloud** uses the hosted service.
 
-Dwell activates ordinary controls after 900 ms and Commit after 1,200 ms. Move off all buttons before another dwell activation. Both handedness profiles are supported. One-hand calibration records the comfortable pointer range without pinch cycles.
+To create the portable and source archives, run these commands in PowerShell after installing the project dependencies:
 
-| Operation | Keyboard / pointer |
+```powershell
+pnpm run build:hosted
+node scripts/package.mjs --candidate
+& .\scripts\archive.ps1 -Candidate
+```
+
+The ZIP files and SHA-256 checksums are written to `release/`. [Packaging guide](scripts/README.md)
+
+## Model setup
+
+The checkout includes `public/tracking/hand_landmarker.task` for MediaPipe and `public/tsm/mit-tsm-jester-streaming.onnx` for MIT Online TSM. `pnpm run assets` stages the workers, WASM, and manifests. The pretrained TSM uses a MobileNetV2 backbone, Jester weights, and an FP32 ONNX export. It runs in a dedicated ONNX Runtime Web worker on the device.
+
+| Gesture in the mirrored preview | Draft opened |
 | --- | --- |
-| Box / Cylinder | `B` / `C` |
-| Select | `V`, then click a solid or object-list entry |
-| Move | `M`, then drag or use 1 mm XY buttons |
-| Scale | `S`, then scroll, press `+` / `-`, or use 0.1× buttons |
-| Subtract | `D`, then choose the cutter |
-| Union | `U`, then choose the second solid |
-| Commit / Cancel | `Enter` / `Escape` in the workspace |
-| Undo | `Ctrl+Z` |
-| Pause / Resume | `Space` in the workspace |
-| Focused button | `Enter` / `Space` activates that control |
+| Swipe left | Box |
+| Swipe right | Cylinder |
+| Thumbs up | Union, when a solid is selected and a second solid is available |
 
-The default box is 20 × 20 × 20 mm. The default cylinder has radius 5 mm and height 60 mm along Z. Box X/Y/Z each accept 20, 30, or 40 mm presets. Cylinder radius accepts 3, 5, or 8 mm, and height accepts 20, 40, or 60 mm. Uniform scaling spans 0.5–2.0×.
+Enable the camera, finish calibration, arm **Listen for tool**, and wait for **Make a shortcut**. Each accepted shortcut opens one draft. Choose operands and **Commit** through the regular controls. The [model guide](docs/MODELS.md) covers setup, file integrity, and the separate ST-GCN and streaming CTC research pipeline.
 
-The inspector displays **Final size**, **Preview size**, or **Target size** for the current operation. A 20 × 30 × 40 mm box scaled to 1.4× measures 28 × 42 × 56 mm.
+## Deploy Inspect aloud
 
-### Camera setup
+The root [Render Blueprint](render.yaml) defines the `palmivo` web service and the `palmivo-inspection` Workflow. It uses the published `codex/inspect-aloud` branch. After a user chooses **Inspect aloud**, the web service sends the selected binary STL and scene revision to `inspect_part`. That flow measures the mesh and sends a short findings caption to ElevenLabs Flash v2.5. The browser receives the result, caption, and audio. Camera frames, landmarks, and project history stay in the browser.
 
-Enable the camera, select the pointer hand, and calibrate the comfortable movement range. Pinch mode also calibrates three pinch/release cycles and checks the other palm. Use **Test click** before editing. Input settings and mapping persist locally.
+| Service | Dashboard variable | Required value |
+| --- | --- | --- |
+| `palmivo` | `RENDER_API_KEY` | Key for the deployment workspace with Workflow Read and Run permissions |
+| `palmivo-inspection` | `ELEVENLABS_API_KEY` | Text to Speech API key |
+| `palmivo-inspection` | `ELEVENLABS_VOICE_ID` | ID of an English voice available to the account |
 
-### Projects and exports
+Render supplies the workflow slug and generates the session signing secret. Enter secrets directly in Render. The [deployment guide](docs/INSPECT_ALOUD.md) covers Blueprint setup, billing, data handling, and end-to-end verification.
 
-Existing project JSON, saved scenes, and calibration continue to load.
+## Architecture and performance
 
-- **Export project / Open project:** preserve editable recipes, transforms, and committed AST history in versioned JSON.
-- **Export STL:** save the selected committed solid with its position and scale applied. Import the coordinates as millimetres in a viewer or slicer.
-- **Snapshot:** save the CAD viewport as PNG.
-- **Record demo:** save the CAD canvas and AST as WebM, excluding webcam imagery and audio.
-- **Export result:** save the completed benchmark with settings, stage timings, and sample counts.
+MediaPipe landmarks, TSM shortcuts, and pointer or keyboard input use one draft controller. The controller validates each AST before executing `Create`, `Move`, `Scale`, `Union`, or `Subtract` in a Manifold WASM worker. Three.js renders the workspace independently of tracking and inference. [Architecture and data contracts](docs/ARCHITECTURE.md)
 
-## Performance and latency
+A local 640 × 480 webcam sample measured **29.43 camera FPS**, **28.85 tracking FPS**, and **59.82 render FPS** while MIT TSM was listening. The 74 timed predictions yielded the following per-frame results.
 
-The recorded GPU-worker sample uses 640 × 480 input and contains **1,201 tracking observations**. Its reported camera and tracking rates are **15.08 FPS**. The independent camera-only probe records **15.13 raw frames/s**. CAD rendering uses a separate **60 FPS budget**.
+| Stage | p50 | p95 |
+| --- | ---: | ---: |
+| TSM inference | 36.36 ms | 40.06 ms |
+| TSM frame round trip | 41.60 ms | 45.81 ms |
 
-| Processing stage | p50 | p95 | Samples |
-| --- | ---: | ---: | ---: |
-| Hand landmark processing | 12.440 ms | 18.560 ms | 1,201 |
-| Temporal rules and draft handling | 0.110 ms | 0.175 ms | 1,201 |
-| Primitive generation | 3.805 ms | 5.570 ms | 22 |
-| Boolean subtraction | 3.580 ms | 7.005 ms | 10 |
-| Committed command completion | 4.955 ms | 7.605 ms | 40 |
+These timings cover model processing and frame transport. The app measures camera, render, gesture processing, and hosted inspection separately. Use **Run 23 s benchmark**, arm **Listen for tool** during the measurement window, and export the result for the camera and laptop being tested. [Benchmark evidence and procedure](docs/benchmarks/README.md)
 
-These are separate browser processing stages. Geometry and command rows come from a camera-off CAD session. Camera exposure, intentional gesture dwell, geometry execution, and display refresh have their own measurement boundaries. The preserved [processing sample](docs/benchmarks/performance-before.json), [geometry session](docs/benchmarks/prototype04-measurements.json), and [camera delivery probe](docs/benchmarks/camera-delivery-before.json) provide the underlying measurements.
+## Validate a checkout
 
-The **Performance check** panel runs a **3-second warm-up followed by a fixed 20-second sample**. It reports completed tracking/rendering rates, landmark and rules p50/p95, video-callback-to-handler timing, hand-presence coverage, and control-ready coverage. Exported JSON includes the camera configuration, backend, input mode, measurement window, and sample counts.
-
-## Verification
-
-~~~sh
+```sh
 pnpm test
-~~~
+pnpm run build:hosted
+node --test server/host.test.mjs
+python qa/verify_stl.py examples/flanged-guide-bushing-mm.stl --dimensions 20 20 40 --through-hole
+```
 
-The application suite covers typed commands, transactions, camera calibration, tracking, STL export, spoken inspection, and benchmark accounting. Full landmark-driven CAD scenarios exercise two-hand and one-hand paths at simulated 13/30/60 FPS. The hosted gateway and Workflow have separate test suites in the [inspection guide](docs/INSPECT_ALOUD.md).
-
-The independent STL audit checks dimensions, volume, normals, welded-edge closure, winding, and the subtraction bore:
-
-~~~sh
-python qa/verify_stl.py examples/through-hole-mm.stl --dimensions 28 42 56 --through-hole
-~~~
-
-The [through-hole example](examples/through-hole-mm.stl) has 28 × 42 × 56 mm bounds, 144 triangles, and a closed, consistently oriented surface.
+The STL audit checks the exported file independently of the CAD engine. For the Python Workflow, install `workflow/requirements.txt` in a virtual environment and run `python -m unittest workflow.test_inspection`. [Developer QA](qa/README.md) · [Hosted verification](docs/INSPECT_ALOUD.md#verify-the-hosted-workbench)
 
 ## Repository layout
 
-~~~text
-src/          Application, controller/compiler, tracking, geometry, UI, and tests
-public/       Locally prepared tracking assets and asset manifest
-scripts/      Asset preparation, serving, packaging, and archive tools
-qa/           Developer fixtures, camera probe, and independent STL checks
-docs/         Architecture, operation guides, and validation records
-  benchmarks/ Machine-readable timing and verification evidence
-  media/      Screenshots and recorded application views
-examples/     Editable project JSON, AST example, and verified STL files
-submission/   Presentation deliverables
-dist/         Generated production application
-release/      Generated portable and source distributions
-~~~
+| Path | Contents |
+| --- | --- |
+| `src/` | Browser UI, CAD controller, geometry worker, tracking, and TSM runtime |
+| `public/` | Pinned model files and generated browser assets |
+| `server/` | Hosted HTTP server and Render Workflow gateway |
+| `workflow/` | Mesh inspection, ElevenLabs speech generation, and Python tests |
+| `ml/` | Optional ST-GCN and streaming CTC capture, training, and evaluation tools |
+| `scripts/` | Asset preparation, build checks, serving, and packaging |
+| `examples/` and `qa/` | Editable projects, verified STL samples, and developer checks |
+| `docs/` | Operating guides, architecture, and benchmark evidence |
 
-Folder indexes describe the purpose of [documentation](docs/README.md), [QA tools](qa/README.md), [scripts](scripts/README.md), and [examples](examples/README.md).
-
-## Package
-
-~~~sh
-pnpm build
-pnpm package
-~~~
-
-The packager creates `release/Palmivo` with the application, runtime, and launcher, plus `release/Palmivo-Source` with source and local assets. On Windows, `scripts/archive.ps1` writes both ZIP archives and their SHA-256 checksums.
-
-## Technical documentation
-
-- [Architecture and interfaces](docs/ARCHITECTURE.md)
-- [Operation guide](docs/DEMO_GUIDE.md)
-- [Validation and measurement records](docs/VALIDATION.md)
-- [Benchmark evidence](docs/benchmarks/README.md)
-- [Project presentation](submission/presentation/SignToAST_HackForge_2K26_Final.pptx)
-- [Recognition research roadmap](docs/ROADMAP.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
+`dist/` and `release/` are generated locally. See [documentation](docs/README.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
