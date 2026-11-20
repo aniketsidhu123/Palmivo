@@ -4,7 +4,9 @@ Palmivo is a browser-based spatial CAD workbench. Use webcam gestures, a mouse, 
 
 [Open Palmivo](https://palmivo.onrender.com/) · [Controls and modelling](docs/DEMO_GUIDE.md) · [Model setup](docs/MODELS.md) · [Render deployment](docs/INSPECT_ALOUD.md)
 
-![Palmivo workspace](docs/media/palmivo-workspace.jpg)
+![Palmivo workbench with the flanged guide bushing selected, its final dimensions, and the Inspect aloud button](docs/media/palmivo-inspect-aloud.jpg)
+
+*Palmivo’s hosted workbench showing the 20 × 20 × 40 mm guide bushing, STL export, and Inspect aloud.*
 
 ## Capabilities
 
