@@ -1,120 +1,46 @@
-# Presenter guide
+# Palmivo workbench guide
 
-## Before the session
+Open the [hosted app](https://palmivo.onrender.com/) or start the local build. **Try the bushing** opens the example with the camera off. Example edits stay in the workspace until you export them. Your existing autosave stays available on reload.
 
-1. Extract the complete portable release on the demonstration laptop.
-2. Launch `start-demo.cmd`; open the localhost URL in Chrome or Edge.
-3. Connect power, close other GPU-heavy applications, and position a fixed frontal webcam.
-4. Use diffuse light with the hands fully visible. Avoid backlighting and hands leaving the frame.
-5. Wait for local assets to verify. Enable the camera and complete calibration.
-6. Confirm the selected pointer hand and mirrored cursor direction.
-   Use Easier sensitivity and 350 ms hover. Register three fresh pinches on Test click before starting. If pinch selection is still difficult, select Dwell assist and rehearse its deliberate holds instead.
-7. Reset twice within three seconds for an empty workspace.
-8. Complete a rehearsal with the exact laptop, camera, browser, lighting, and display arrangement.
+## Camera and gesture controls
 
-Browser camera permission needs an ordinary click during setup. It does not have to be part of the hands-free demonstration.
+Choose **Use my camera**, allow browser camera access, and select the pointer hand. Calibrate your comfortable range. In Pinch mode, complete the pinch-release cycles and check that opening your other hand arms the toolbar. Practice on **Test click**. Use steady frontal lighting and keep the hands in view.
 
-This Prototype 06 release targets recording and submission by **November 16, 2026 afternoon**. It retains the full CAD, project, and STL workflow in the refreshed workbench. Rehearse the fixed sequence below first; use the precise-size variation only after the default sequence is reliable.
-
-Before recording, register three fresh activations on **Test click** and check that the pointer can reach the tools and Commit. Mint marks tracking/selection feedback; amber emphasizes deliberate Commit. Set the browser framing so the viewport, Commit controls, and camera preview are visible together. Keep the real tracking/backend labels visible when describing performance.
-
-## Fixed demonstration sequence
-
-Aim for two to three minutes. Use slow, deliberate gestures and release pinches fully between tool activations.
-
-| Step | Action | What to show |
+| Mode | Activate controls | Move and scale |
 | --- | --- | --- |
-| 1 | State the current backend | “This prototype uses local MediaPipe hand tracking and temporal gesture rules.” |
-| 2 | Show local assets ready, then disconnect Wi-Fi | The app continues operating from localhost |
-| 3 | Choose Box, then Commit | A real 20 mm solid and a Create AST |
-| 4 | Choose Scale, pinch both hands, spread to approximately 1.4×, release, Commit | Continuous two-hand spatial control and a numeric Scale AST |
-| 5 | Choose Cylinder, then Commit | A second solid centered through the box |
-| 6 | Select the box in the scene list, then choose Subtract | The box is explicitly the Target |
-| 7 | Select the cylinder as Cutter | A readable Target − Cutter draft |
-| 8 | Choose Commit | Real Boolean geometry, visible through-hole, committed Subtract AST |
-| 9 | Choose Undo | Both source solids return |
-| 10 | Select the box, choose Move, drag, then Cancel | Reversible previews preserve the committed state |
+| Pinch | Open the other palm, hover until ready, then make a fresh pinch | Pinch-drag along XY or pinch both hands and change their separation |
+| Dwell assist | Keep the other palm open and hold the pointer over the control | Use continuous gestures or precise adjustment buttons |
+| One-hand dwell | Hold the pointer over the control | Use 1 mm XY steps and 0.1× scale steps |
 
-When the cylinder is occluded by the box, select its scene-list entry rather than trying to reach an obscured surface. During a draft, finish or cancel it before choosing another operation.
+Dwell takes 900 ms for ordinary controls and 1,200 ms for Commit. Move off the controls to rearm. Releasing a pinch holds the preview. Choose **Commit** to apply it or **Cancel** to discard it. For the three optional pretrained shortcuts, see [model setup](MODELS.md#verify-shortcuts).
 
-Optionally insert an export after step 8 and before Undo: show the selected result's **FINAL SIZE**, activate **Export STL**, and open the downloaded file in the prepared viewer or slicer. This demonstrates a reusable surface model created through the gesture workflow. Keep the stage sequence short by preparing the viewer before presenting.
-
-## Precise-size variation
-
-The default demo above is unchanged. To show the new presets in a second pass:
-
-1. Choose **Box**. In **Precise size**, keep **X 20**, choose **Y 30**, and choose **Z 40**. Use the normal open-other-hand, hover, fresh-pinch gesture, or click the buttons. Dwell assist also works on these controls.
-2. Verify **20 × 30 × 40 mm** and the exact `[20, 30, 40]` dimensions in the draft Create AST. Commit the box.
-3. Choose **Scale**, use both hands to reach approximately **1.4×**, release to freeze, then Commit. At exactly 1.4×, the inspector's **FINAL SIZE** is **28 × 42 × 56 mm**. The **PREVIEW SIZE** label distinguishes unfinished Move/Scale changes from committed dimensions.
-4. Choose **Cylinder**, choose **Radius 3**, and leave **Height 60**. Confirm **R 3 × H 60 mm** and `[3, 60]` in its draft AST, then Commit.
-5. Select the box as Target, choose Subtract, choose the cylinder as Cutter, and Commit. The centered 60 mm cylinder extends through the box's 56 mm Z depth at exactly 1.4×.
-6. Show the subtraction AST and the resulting **FINAL SIZE**. Optionally activate **Export STL** before Undo. While choosing operands, **TARGET SIZE** refers to the existing target, not a guessed Boolean result.
-7. Choose Undo. Try a different preset during another creation draft, then Cancel to show that a size change remains a preview until committed.
-
-Box X, Y, and Z can each be set independently to **20, 30, or 40 mm**. Cylinder radius supports **3, 5, or 8 mm** and height supports **20, 40, or 60 mm**. Presets set base dimensions; uniform scaling multiplies them afterward. These are illustrative CAD units, not dimensions measured from the webcam.
-
-## Export a usable surface model
-
-Select a committed solid and verify its name and **FINAL SIZE** in the inspector. Activate **Export STL** with the existing open-other-hand, hover, fresh-pinch action, Dwell assist, or a normal mouse click. A focused Export STL button also supports **Enter** or **Space**. Export is disabled with no selection, during drafts or geometry jobs, and while editing is paused.
-
-The binary STL includes the selected solid's committed position and scale. It omits the scene grid, outlines, previews, and removed cutters. The export does not modify the scene or consume Undo history.
-
-STL stores unitless surface coordinates. Palmivo writes millimetre values, so choose **mm** in the receiving tool and confirm the expected dimensions. Prepare print settings in the slicer. Keep the Palmivo **project JSON** for editable recipes, transforms, and AST history, because STL stores the surface without that information or colors.
-
-The included `examples/scaled-box-mm.stl` is **28 × 42 × 56 mm**. `examples/through-hole-mm.stl` retains the centered radius 3 mm through-hole after subtraction. Both come from actual browser downloads and pass the separate binary-file checks. The source-only **http://127.0.0.1:5173/qa/stl.html** viewer uses STLLoader to inspect a chosen STL independently of the app's scene. `qa/verify_stl.py` checks dimensions, normals, surface closure/winding, and the centered bore using Python's standard library.
-
-## Reopen an exported project
-
-This is a setup and recovery workflow using an ordinary mouse click and the system file picker. It works with the camera off and with Wi-Fi disabled.
-
-1. Export the current committed project if you want to keep it separately. Commit or Cancel any active preview before opening another file.
-2. Click **Open project** and choose a locally exported **version 1 Palmivo JSON** file, no larger than **8 MiB**. The supplied example project can also be used.
-3. Review the filename and the solid/command counts. **Keep current scene** or **Escape** cancels. **Open saved project** replaces the current workspace after the geometry rebuild succeeds.
-4. Inspect the restored solids, transforms, and committed AST. Camera calibration stays the same. The opened project is autosaved locally and can be exported again.
-5. Make a new edit and use Undo to verify it. The prior exported command log remains visible in the file, while Undo snapshots start with edits made after opening; pre-open Undo history is not restored.
-
-Gesture editing is suspended while the picker and replacement review are open. Cancelling, rejecting an invalid file, or a failed geometry rebuild leaves the current committed scene intact. Finish a draft or wait for geometry execution if **Open project** is disabled. Arbitrary meshes, CAD scripts, and other file formats are outside this workflow.
-
-## Gesture reminders
-
-- Open the other hand to arm toolbar controls.
-- Hover over the desired button before pinching.
-- A fresh pinch edge activates the button. A held pinch dragged onto it does nothing.
-- Wait for the hover progress bar to fill. Target capture tolerates small cursor shifts while closing the pinch.
-- In optional Dwell assist, hold the pointer steady with thumb/index separated for 0.9 seconds (Commit: 1.2 seconds), then move off all buttons to rearm.
-- Releasing a manipulation freezes its preview.
-- Commit and Cancel are explicit controls.
-- Both hands must remain tracked for gesture editing.
-- When tracking pauses, release both pinches and show both hands until tracking stabilizes.
-
-## Keyboard recovery
-
-| Key | Action |
+| Action | Keyboard |
 | --- | --- |
-| B / C | Box / Cylinder |
-| V | Select |
-| M | Move, then mouse drag |
-| S | Scale, then mouse wheel or + / − |
-| D | Subtract, then choose cutter |
-| Enter | Commit |
-| Escape | Cancel draft |
-| Space | Pause / resume |
-| Ctrl+Z | Undo |
-| Enter / Space on focused Export STL | Download the selected committed surface |
+| Box / Cylinder | `B` / `C` |
+| Select, Move, Scale | `V`, `M`, `S` |
+| Union / Subtract | `U` / `D`, then select the second solid |
+| Adjust scale | `+` / `-` during a Scale draft |
+| Commit / Cancel | `Enter` / `Escape` in the workspace |
+| Undo | `Ctrl+Z` |
+| Pause / Resume | `Space` in the workspace |
 
-Use recovery controls openly if needed. They invoke the same controller and AST pipeline.
+## Build a flanged guide bushing
 
-## Offline proof
+1. Create the default **20 × 20 × 20 mm** Box at the origin and Commit.
+2. Create a centered Cylinder with **radius 8 mm** and **height 40 mm**. Commit it.
+3. Select the box, choose **Union**, and select the cylinder as the second operand. Review the AST and Commit.
+4. Create and commit a centered Cylinder with **radius 3 mm** and **height 60 mm**. Select the joined solid as the target, choose **Subtract**, select the new cylinder as the cutter, and Commit.
+5. Check the **20 × 20 × 40 mm** final size and the open centre passage. Select solids from the scene list when one obscures another.
 
-Before stage time, disable Wi-Fi and reload the production URL. Confirm that the app verifies assets, restores its scene, enables the camera, performs subtraction, and exports JSON and STL. Reopen the exported project JSON, confirm its saved dimensions and transforms, and export its selected solid as STL again. Reload once more to verify local autosave. A page that merely keeps running after disconnection is weaker evidence than a successful fresh reload.
+Choose **Scale → +0.1× → Commit** to create a **22 × 22 × 44 mm** version. In the hosted app, **Inspect aloud** shows verified mesh findings and reads them using ElevenLabs. [Hosted verification](INSPECT_ALOUD.md#verify-the-hosted-workbench)
 
-Local-asset readiness means the packaged files passed checks. It is not a network monitor. Do not describe that badge alone as proof that Wi-Fi is disabled.
+Box X, Y, and Z each accept **20, 30, or 40 mm**. Cylinder radius accepts **3, 5, or 8 mm**, and height accepts **20, 40, or 60 mm**. Uniform scale ranges from **0.5× to 2.0×**. CAD coordinates use illustrative millimetres.
 
-## Recording and submission
+## Save, reopen, and export
 
-Record the actual app with the hand preview, AST panel, and diagnostics visible. Capture a complete successful sequence, including the subtraction result and Undo. Keep a backup recording available if the venue's camera or projection setup changes.
+- **Export project** saves editable recipes, transforms, and command history as JSON. **Open project** accepts Palmivo v1 and v2 JSON up to 8 MiB and restores a project after its geometry successfully rebuilds. A new Undo history begins after opening.
+- **Export STL** saves a selected committed solid with its position and scale applied. Choose millimetres in the receiving viewer or slicer. Keep the JSON for editable history.
+- **Snapshot** saves the CAD viewport as PNG. **Record demo** records the viewport and AST as WebM. Use a screen recorder with system audio to capture live Inspect aloud playback.
+- **Export result** saves a completed performance benchmark. [Measurement guide](benchmarks/README.md)
 
-Include the runnable folder, source/lockfile, example project and STL files, README, and measured performance export with the recording. Record demo captures the CAD canvas and AST locally, excluding webcam pixels and microphone audio. Use your normal screen recorder when you want the entire interface and hand preview in the final presenter demonstration.
-
-State the implemented scope accurately: a constrained gesture-operated spatial compiler with real CAD execution. ST-GCN + CTC, general sign-language translation, and arbitrary viewpoint invariance are planned extensions. Any latency claim must name the measured stage and hardware.
-
+To verify offline operation, disconnect Wi-Fi and reload the portable localhost app. Open the example, scale or edit a solid, export the STL and project JSON, and reopen the JSON. The [example files](../examples/README.md) include the verified guide bushing and its editable recipe.

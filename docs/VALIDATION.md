@@ -4,7 +4,13 @@ This file distinguishes verified automated behavior from hardware/presenter chec
 
 ## Automated verification
 
-The current project passes **283 tests across 21 source files**, plus TypeScript, production bundling, and local-asset verification. The historical release sections below retain the conditions and counts of their original runs.
+The hosted inspection release passed **319 app tests**, **5 gateway tests**, and **8 Workflow tests**. A clean hosted build verified the bundled TSM model and local runtime assets. In the packaged browser check, the full palette and TSM fixture paths produced the guide bushing, and project reopening and STL export worked with external networking blocked.
+
+Independent STL verification confirmed **20 × 20 × 40 mm** at the original scale and **22 × 22 × 44 mm** at 1.1×. Both versions had 400 triangles, consistent surface winding, and an open centre passage. The hosted app loaded the bushing and applied the scale change. Live voice playback was also confirmed on the built-in example and a working scene. See [how to repeat the hosted check](INSPECT_ALOUD.md#verify-the-hosted-workbench).
+
+### Earlier validation baseline
+
+The historical release sections below retain the conditions and counts of their original runs.
 
 | Check | Status / result |
 | --- | --- |

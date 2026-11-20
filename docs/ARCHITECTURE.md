@@ -5,8 +5,10 @@ Palmivo separates sensing, interaction, command compilation, and geometry execut
 ```mermaid
 flowchart LR
   Camera[Local webcam] --> Tracking[MediaPipe tracking worker]
+  Camera --> Shortcuts[MIT Online TSM worker]
   Tracking --> Rules[Temporal gesture rules]
   Rules --> Controller[Draft controller and validator]
+  Shortcuts --> Controller
   Pointer[Mouse and keyboard] --> Controller
   Controller --> Preview[Reversible render preview]
   Controller --> AST[Committed typed AST]
@@ -15,6 +17,12 @@ flowchart LR
   Scene --> View[Three.js viewport]
   Preview --> View
   Scene --> Storage[IndexedDB and JSON export]
+  Scene --> STL[Selected binary STL]
+  STL -->|Inspect aloud| Gateway[Render web service]
+  Gateway --> Flow[Render inspection workflow]
+  Flow -->|Findings caption| Speech[ElevenLabs Text to Speech]
+  Speech -->|Audio| Flow
+  Flow -->|Report and audio| Gateway
 ```
 
 ## Module responsibilities
@@ -23,6 +31,7 @@ flowchart LR
 | --- | --- |
 | `src/main.ts` | Input routing, calibration, worker wiring, autosave, diagnostics |
 | `src/tracking` | Camera scheduling, MediaPipe worker, hand features, temporal recognition |
+| `src/tsm` | Browser TSM worker, model cadence, and shortcut stability rules |
 | `src/core/controller.ts` | Authoritative scene state, drafts, Commit, Cancel, Undo |
 | `src/core/validation.ts` | AST, scene, bounds, reference, and revision validation |
 | `src/core/transformSteps.ts` | Exact XY and uniform-scale preview adjustments through the same controller |
@@ -33,6 +42,8 @@ flowchart LR
 | `src/storage.ts` | Local project persistence |
 | `src/metrics.ts` | Bounded timing samples and JSON downloads |
 | `src/shared/types.ts` | Shared data contracts |
+| `server/` | Hosted asset serving, inspection request validation, session receipts, and Render API client |
+| `workflow/` | Independent mesh checks and ElevenLabs speech generation |
 
 ## Threading and backpressure
 
@@ -60,7 +71,7 @@ The geometry client assigns increasing job IDs. A three-second timeout terminate
 
 ## Commands and scene data
 
-`CommandAST` is a discriminated union of `Create`, `Move`, `Scale`, and `Subtract`. A command request also contains a unique command ID, base scene revision, and input source. Object references are concrete IDs before execution.
+`CommandAST` is a discriminated union of `Create`, `Move`, `Scale`, `Union`, and `Subtract`. A command request also contains a unique command ID, base scene revision, and input source. Object references are concrete IDs before execution.
 
 Validation rejects incomplete arguments, nonfinite positions/scales, unsupported bounds, missing objects, identical subtraction operands, duplicate command IDs, and stale scene revisions. The controller permits one draft and one commit transaction at a time.
 
@@ -91,6 +102,10 @@ CAD units are illustrative millimetres. Box defaults are 20 mm per axis. Cylinde
 `pnpm assets` emits a locally bundled tracking worker, copies the matching MediaPipe WASM files, and prepares the local `.task` model. It writes a SHA-256 manifest. Startup checks the manifest and initializes the geometry engine before marking local assets ready.
 
 Vite emits local application and geometry-worker assets. The static server binds to `127.0.0.1:4173`; it serves production files with JavaScript/WASM MIME types, local camera permission policy, and cross-origin isolation headers. No service worker, remote inference server, login, or cloud storage is required.
+
+## Hosted inspection
+
+The hosted browser uses the same local CAD pipeline. The explicit **Inspect aloud** action submits one selected STL and its committed revision. The Node gateway starts an idempotent Render flow and returns a session-bound run ID. The Python workflow checks the mesh and requests speech for a bounded findings caption. The interface shows a report even if voice generation is unavailable and suppresses automatic playback for a stale result. [Deployment and verification](INSPECT_ALOUD.md)
 
 ## Measurement boundaries
 
