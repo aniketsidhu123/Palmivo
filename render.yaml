@@ -1,0 +1,35 @@
+services:
+  - type: workflow
+    name: palmivo-inspection
+    repo: https://github.com/aniketsidhu123/Sign_To_AST
+    branch: codex/inspect-aloud
+    runtime: python
+    region: singapore
+    buildCommand: pip install -r workflow/requirements.txt
+    startCommand: python -m workflow.main
+    envVars:
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        sync: false
+  - type: web
+    name: palmivo
+    branch: codex/inspect-aloud
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: npx --yes pnpm@12.21.0 install --prod=false --frozen-lockfile && npm run build:hosted
+    startCommand: node server/host.mjs
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: '24.22.1'
+      - key: PALMIVO_WORKFLOW_SLUG
+        fromService:
+          type: workflow
+          name: palmivo-inspection
+          property: slug
+      - key: RENDER_API_KEY
+        sync: false
+      - key: PALMIVO_INSPECT_SECRET
+        generateValue: true

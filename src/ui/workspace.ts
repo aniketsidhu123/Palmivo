@@ -39,12 +39,14 @@ export interface WorkspaceUI {
   video: HTMLVideoElement;
   handCanvas: HTMLCanvasElement;
   cameraButton: HTMLButtonElement;
+  exampleCameraButton: HTMLButtonElement;
+  tryBushingButton: HTMLButtonElement;
   calibrateButton: HTMLButtonElement;
   exportButton: HTMLButtonElement;
   stlExportButton: HTMLButtonElement;
   openProjectButton: HTMLButtonElement;
   projectFileInput: HTMLInputElement;
-  reviewProject(filename: string, solids: number, commands: number): Promise<boolean>;
+  reviewProject(filename: string, solids: number, commands: number, example?: boolean): Promise<boolean>;
   resetButton: HTMLButtonElement;
   metricsExportButton: HTMLButtonElement;
   dominantHandSelect: HTMLSelectElement;
@@ -82,10 +84,10 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     <header class="app-header">
       <a class="brand" href="#" aria-label="Palmivo workspace"><span class="brand-mark"><i></i><i></i><i></i></span><span>palmivo<span class="brand-period">.</span></span></a>
       <div class="header-context"><span class="header-divider"></span><span>GESTURE CAD / LOCAL COMPILER</span><span class="version-tag">BUILD / 06</span></div>
-      <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>All computation stays here</span><button id="open-project" class="quiet-button" aria-label="Open project" title="Reopen a Palmivo project JSON">${icon('open')}<span>Open project</span></button><button id="export-project" class="quiet-button" aria-label="Export project">${icon('export')}<span>Export project</span></button><input id="project-file" type="file" accept=".json,application/json" aria-label="Open Palmivo project JSON" hidden></div>
+      <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>CAD and camera stay local</span><button id="open-project" class="quiet-button" aria-label="Open project" title="Reopen a Palmivo project JSON">${icon('open')}<span>Open project</span></button><button id="export-project" class="quiet-button" aria-label="Export project">${icon('export')}<span>Export project</span></button><input id="project-file" type="file" accept=".json,application/json" aria-label="Open Palmivo project JSON" hidden></div>
     </header>
     <main class="workspace">
-      <section class="workspace-heading"><div><div class="eyebrow">LOCAL SPATIAL WORKSPACE</div><h1>Shape with intent<span>.</span></h1></div><div class="readiness" id="assets-status"><span class="readiness-icon">↻</span><div><strong>Preparing local assets</strong><span>Checking geometry & tracking runtime</span></div></div></section>
+      <section class="workspace-heading"><div><div class="eyebrow">LOCAL SPATIAL WORKSPACE</div><h1>Shape with intent<span>.</span></h1><div class="example-actions"><button id="try-bushing" type="button" class="outline-button" disabled>Try the bushing</button><button id="try-camera" type="button" class="outline-button" disabled>Use my camera</button></div></div><div class="readiness" id="assets-status"><span class="readiness-icon">↻</span><div><strong>Preparing local assets</strong><span>Checking geometry & tracking runtime</span></div></div></section>
       <div class="workspace-grid">
         <aside class="tool-rail" aria-label="CAD tools"><div class="rail-label">TOOLS <span>01—08</span></div><div class="tool-list">${toolData.map(([tool,label,key,title]) => `${tool === 'select' || tool === 'undo' ? '<div class="tool-divider"></div>' : ''}<button class="tool-button" data-tool="${tool}" title="${title}" aria-label="${title}">${icon(tool)}<span>${label}</span><kbd>${key}</kbd></button>`).join('')}</div><div class="rail-bottom"><button data-tool="pause" class="tool-button pause-button">${icon('pause')}<span>Pause</span><kbd>␣</kbd></button><button id="reset-scene" class="reset-button">${icon('reset')}Reset workspace</button></div></aside>
         <section class="stage-shell" aria-label="3D scene">
@@ -277,6 +279,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     text(pause.querySelector<HTMLElement>('span')!, state.paused ? 'Resume' : 'Pause');
     const open = q<HTMLButtonElement>('#open-project');
     open.disabled = state.busy || !!state.draft;
+    q<HTMLButtonElement>('#try-bushing').disabled = open.disabled;
     open.title = state.busy ? 'Wait for the current geometry operation to finish' : state.draft ? 'Commit or Cancel the current draft before opening a project' : 'Reopen a Palmivo project JSON';
     const stlExport = q<HTMLButtonElement>('#export-stl');
     const transform = state.draft?.kind === 'scale' || state.draft?.kind === 'move' ? state.draft : null;
@@ -310,13 +313,22 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     paletteButtons, sizePresetButtons, transformStepButtons,
     viewportHost: q('#viewport'), video,
     handCanvas: q<HTMLCanvasElement>('#hand-overlay'), cameraButton,
+    exampleCameraButton: q<HTMLButtonElement>('#try-camera'),
+    tryBushingButton: q<HTMLButtonElement>('#try-bushing'),
     calibrateButton: q<HTMLButtonElement>('#calibrate-button'),
     exportButton: q<HTMLButtonElement>('#export-project'),
     stlExportButton: q<HTMLButtonElement>('#export-stl'),
     openProjectButton: q<HTMLButtonElement>('#open-project'),
     projectFileInput: q<HTMLInputElement>('#project-file'),
-    reviewProject(filename, solids, commands) {
+    reviewProject(filename, solids, commands, example = false) {
       if (reviewDialog.open || finishReview) return Promise.resolve(false);
+      text(q('#project-review-description'), example
+        ? 'The example opens in this workspace. Your existing autosave remains available after reload.'
+        : 'Opening a project replaces the current scene. Export your current project first if you want to keep it.');
+      text(q('.project-review-note'), example
+        ? 'Export your project to keep any changes you make to the example.'
+        : 'Only the saved geometry and command history are restored. Your hand calibration stays the same.');
+      text(q('#project-review button[value="replace"]'), example ? 'Open example' : 'Open saved project');
       text(q('#project-review-filename'), filename);
       text(q('#project-review-summary'), `${solids} solid${solids === 1 ? '' : 's'} · ${commands} saved command${commands === 1 ? '' : 's'}`);
       reviewDialog.returnValue = 'cancel';
@@ -434,6 +446,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     },
     setCameraState(active) {
       hud.hidden = !active;
+      q('#try-camera').hidden = active;
       cameraButton.innerHTML = `${icon('camera')}${active ? 'Stop camera' : 'Enable camera'}`;
       q('#camera-placeholder').hidden = active;
       q('#tracking-badge').textContent = active ? 'LIVE TRACKING' : 'CAMERA OFF';

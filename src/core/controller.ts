@@ -145,7 +145,7 @@ export class Controller {
       if(mesh && (!Number.isFinite(mesh.volume)||mesh.volume<=1e-6||mesh.indices.length===0)) throw new Error('The operation produced an empty solid. Check the input solids and try again.');
       next.revision++; next.commands.push(request); this.history.push(snapshot); if(this.history.length>20) this.history.shift();
       if(mesh&&meshId) this.meshes.set(meshId,mesh);
-      this.state.scene=next; this.state.selectedId=nextSelected; this.state.lastCommand=request; this.state.draft=null; this.state.busy=false; this.pruneMeshes(); this.notify(`${request.ast.type} committed. The scene is saved locally.`); return true;
+      this.state.scene=next; this.state.selectedId=nextSelected; this.state.lastCommand=request; this.state.draft=null; this.state.busy=false; this.pruneMeshes(); this.notify(`${request.ast.type} committed.`); return true;
     } catch(error) { if(job!==this.generation) return false; this.state.busy=false; this.notify(error instanceof Error?error.message:'Geometry execution failed. Previous scene preserved.'); return false; }
   }
   cancel(): void { if(this.state.busy) return; this.state.draft=null; this.notify('Draft cancelled. Committed scene preserved.'); }

@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "revision": 5,
+  "solids": [
+    {
+      "id": "difference-ef8b83ce-43f9-464b-9d73-8f0d688705dc",
+      "name": "Box 1 + Cylinder 1 − Cylinder 2",
+      "color": "#b8d7b3",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1,
+      "recipe": {
+        "kind": "subtract",
+        "target": {
+          "id": "union-0da64692-93fa-4c66-8fe4-e312c19d6417",
+          "name": "Box 1 + Cylinder 1",
+          "color": "#b8d7b3",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "scale": 1,
+          "recipe": {
+            "kind": "union",
+            "target": {
+              "id": "box-d92346d1-6aa3-45f3-8641-25aedb6f2522",
+              "name": "Box 1",
+              "recipe": {
+                "kind": "box",
+                "dimensions": [
+                  20,
+                  20,
+                  20
+                ]
+              },
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "scale": 1,
+              "color": "#b8d7b3"
+            },
+            "other": {
+              "id": "cylinder-509cfa13-8ed7-444a-9884-a8230c0fdbcf",
+              "name": "Cylinder 1",
+              "recipe": {
+                "kind": "cylinder",
+                "radius": 8,
+                "height": 40,
+                "segments": 32
+              },
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "scale": 1,
+              "color": "#e5a96d"
+            }
+          }
+        },
+        "cutter": {
+          "id": "cylinder-26190c8d-8569-415c-a716-726769e6be14",
+          "name": "Cylinder 2",
+          "recipe": {
+            "kind": "cylinder",
+            "radius": 3,
+            "height": 60,
+            "segments": 32
+          },
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "scale": 1,
+          "color": "#e5a96d"
+        }
+      }
+    }
+  ],
+  "commands": [
+    {
+      "commandId": "cmd-df2a763e-914b-4b0d-bd71-ba40c64780ca",
+      "baseSceneRevision": 0,
+      "source": "pointer",
+      "ast": {
+        "type": "Create",
+        "objectId": "box-d92346d1-6aa3-45f3-8641-25aedb6f2522",
+        "primitive": "Box",
+        "dimensions": [
+          20,
+          20,
+          20
+        ],
+        "position": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "commandId": "cmd-01aa09af-bfec-474f-b1c7-be2d948347ac",
+      "baseSceneRevision": 1,
+      "source": "pointer",
+      "ast": {
+        "type": "Create",
+        "objectId": "cylinder-509cfa13-8ed7-444a-9884-a8230c0fdbcf",
+        "primitive": "Cylinder",
+        "dimensions": [
+          8,
+          40
+        ],
+        "position": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "commandId": "cmd-9a0df160-9a68-4623-827d-9c6e76631c96",
+      "baseSceneRevision": 2,
+      "source": "pointer",
+      "ast": {
+        "type": "Union",
+        "targetId": "box-d92346d1-6aa3-45f3-8641-25aedb6f2522",
+        "otherId": "cylinder-509cfa13-8ed7-444a-9884-a8230c0fdbcf",
+        "resultId": "union-0da64692-93fa-4c66-8fe4-e312c19d6417"
+      }
+    },
+    {
+      "commandId": "cmd-067ac495-835a-486c-a0f0-92df74718641",
+      "baseSceneRevision": 3,
+      "source": "pointer",
+      "ast": {
+        "type": "Create",
+        "objectId": "cylinder-26190c8d-8569-415c-a716-726769e6be14",
+        "primitive": "Cylinder",
+        "dimensions": [
+          3,
+          60
+        ],
+        "position": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "commandId": "cmd-247e1f43-3801-4b29-a83e-e6a0e0f0382e",
+      "baseSceneRevision": 4,
+      "source": "pointer",
+      "ast": {
+        "type": "Subtract",
+        "targetId": "union-0da64692-93fa-4c66-8fe4-e312c19d6417",
+        "cutterId": "cylinder-26190c8d-8569-415c-a716-726769e6be14",
+        "resultId": "difference-ef8b83ce-43f9-464b-9d73-8f0d688705dc"
+      }
+    }
+  ]
+}

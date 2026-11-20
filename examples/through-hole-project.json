@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "units": "mm",
+  "revision": 4,
+  "solids": [
+    {
+      "id": "example-through-hole",
+      "name": "Box 1 − Cylinder 1",
+      "color": "#b8d7b3",
+      "position": [0, 0, 0],
+      "scale": 1,
+      "recipe": {
+        "kind": "subtract",
+        "target": {
+          "id": "example-box",
+          "name": "Box 1",
+          "color": "#b8d7b3",
+          "position": [0, 0, 0],
+          "scale": 1.4,
+          "recipe": { "kind": "box", "dimensions": [20, 20, 20] }
+        },
+        "cutter": {
+          "id": "example-cylinder",
+          "name": "Cylinder 1",
+          "color": "#e5a96d",
+          "position": [0, 0, 0],
+          "scale": 1,
+          "recipe": { "kind": "cylinder", "radius": 5, "height": 60, "segments": 32 }
+        }
+      }
+    }
+  ],
+  "commands": [
+    {
+      "commandId": "example-create-box",
+      "baseSceneRevision": 0,
+      "source": "gesture-rules",
+      "ast": { "type": "Create", "objectId": "example-box", "primitive": "Box", "dimensions": [20, 20, 20], "position": [0, 0, 0] }
+    },
+    {
+      "commandId": "example-scale-box",
+      "baseSceneRevision": 1,
+      "source": "gesture-rules",
+      "ast": { "type": "Scale", "targetId": "example-box", "uniformScale": 1.4 }
+    },
+    {
+      "commandId": "example-create-cylinder",
+      "baseSceneRevision": 2,
+      "source": "gesture-rules",
+      "ast": { "type": "Create", "objectId": "example-cylinder", "primitive": "Cylinder", "dimensions": [5, 60], "position": [0, 0, 0] }
+    },
+    {
+      "commandId": "example-subtract-001",
+      "baseSceneRevision": 3,
+      "source": "gesture-rules",
+      "ast": { "type": "Subtract", "targetId": "example-box", "cutterId": "example-cylinder", "resultId": "example-through-hole" }
+    }
+  ]
+}

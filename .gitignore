@@ -14,7 +14,9 @@
 /public/learned/wasm/
 /public/learned/gesture.onnx
 /public/learned/manifest.json
-/public/tsm/
+/public/tsm/*
+!/public/tsm/mit-tsm-jester-streaming.onnx
+/public/examples/
 /ml/.venv/
 /ml/data/
 /ml/artifacts/

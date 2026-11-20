@@ -19,6 +19,11 @@ try {
   if (error.code !== 'ENOENT' || !String(error.path).endsWith('manifest.json')) throw error;
   console.log('No custom presenter model bundled.');
 }
-const hasTsm = await verifyTsmAssets(fileURLToPath(dist));
+const hosted = process.argv.includes('--hosted');
+const hasTsm = await verifyTsmAssets(fileURLToPath(dist), hosted);
+const example = JSON.parse(await readFile(new URL('examples/flanged-guide-bushing-project.json', dist), 'utf8'));
+if (example.schemaVersion !== 2 || example.solids?.length !== 1 || example.solids[0].recipe?.kind !== 'subtract') {
+  throw Error('The bundled bushing project is incomplete.');
+}
 console.log(hasTsm ? 'Verified pinned MIT TSM model.' : 'No MIT TSM model bundled. Gesture rules remain available.');
 console.log(`Offline asset verification passed: ${manifest.files.length} local runtime assets and geometry WASM.`);

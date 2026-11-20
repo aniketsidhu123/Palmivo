@@ -15,6 +15,7 @@ import { exportSolidSTL } from './core/stlExport';
 import { applyTransformStep } from './core/transformSteps';
 import { PerformanceBenchmark, type BenchmarkResult } from './core/benchmark';
 import { createPerformancePanel } from './ui/performancePanel';
+import { mountInspectionPanel } from './ui/inspectionPanel';
 import { FeatureEncoder } from './learned/features';
 import { mountLearnedTools } from './learned/tools';
 import { mountTsmTools } from './tsm/tools';
@@ -103,6 +104,7 @@ let persistenceReady = false;
 let initialized = false;
 let projectOpening = false;
 let projectPicking = false;
+let exampleMode = false;
 ui.resetButton.disabled = true;
 const useMappingButton = document.createElement('button');
 useMappingButton.className = 'outline-button'; useMappingButton.id = 'use-current-mapping'; useMappingButton.textContent = 'Use current mapping'; useMappingButton.hidden = true;
@@ -110,10 +112,27 @@ ui.calibrateButton.after(useMappingButton);
 useMappingButton.addEventListener('click', () => {
   calibration = null; useMappingButton.hidden = true; recognizer.reset(); resetActivation();
   ui.setCalibration('Using current mapping. Try Test click before editing; Calibrate remains available.', 0);
+  inspection.refresh();
 });
 
+const inspection = mountInspectionPanel(
+  ui.stlExportButton,
+  () => {
+    const { scene, selectedId } = controller.state;
+    const solid = scene.solids.find(item => item.id === selectedId);
+    const mesh = solid && controller.meshes.get(solid.id);
+    return solid && mesh ? { scene, solid, mesh } : null;
+  },
+  () => initialized && !projectOpening && !projectPicking && !calibration &&
+    !controller.state.busy && !controller.state.paused && !controller.state.draft,
+  duration => measure('inspection_to_audio_ms', duration),
+);
 const presentation = new PresentationCoordinator({
-  full: state => { ui.update({ ...state, busy: state.busy || !initialized || projectOpening || projectPicking }, controller.meshes); viewport.update(state, controller.meshes); },
+  full: state => {
+    ui.update({ ...state, busy: state.busy || !initialized || projectOpening || projectPicking }, controller.meshes);
+    viewport.update(state, controller.meshes);
+    inspection.refresh();
+  },
   renderPreview: state => viewport.updatePreview(state),
   preview: state => ui.updatePreview(state),
   persist: scene => { void saveProject(scene).catch(() => ui.setStatus('Local autosave unavailable. Export your project before closing.')); },
@@ -123,7 +142,7 @@ controller.subscribe(state => {
     moving = null; scaling = state.draft?.kind === 'scale' ? new ScaleSession(state.draft.uniformScale) : null;
     movePhase = 'ready'; lastDraft = state.draft; ui.clearManipulationFeedback();
   }
-  presentation.update(state, initialized, persistenceReady);
+  presentation.update(state, initialized, persistenceReady && !exampleMode);
   presentManipulation();
 });
 
@@ -150,7 +169,10 @@ async function runTool(tool: Tool, source: 'pointer' | 'gesture-rules' | 'keyboa
   if (tool === 'undo') controller.undo();
   if (tool === 'commit') {
     const start = performance.now(); const committed = await controller.commit(source); measure('command_completion_ms', performance.now() - start);
-    if (committed) ui.confirmAction(controller.state.lastCommand?.ast.type === 'Subtract' ? 'Subtraction complete. Solid saved.' : `${controller.state.lastCommand?.ast.type} committed.`, button);
+    if (committed) {
+      if (exampleMode) ui.setStatus('Example updated. Export the project to keep your changes.');
+      ui.confirmAction(controller.state.lastCommand?.ast.type === 'Subtract' ? 'Subtraction complete.' : `${controller.state.lastCommand?.ast.type} committed.`, button);
+    }
   }
   const draft = controller.state.draft;
   if (draft && draft !== beforeDraft) {
@@ -268,6 +290,7 @@ function resetActivation() {
   highlightedButton?.classList.remove('gesture-hover'); highlightedButton = null;
 }
 function buttonId(button: HTMLButtonElement): string | null {
+  for (const [id, inspectionButton] of inspection.buttons) if (button === inspectionButton) return id;
   if (button === tsm.button) return 'tsm:listen';
   if (button === learned.listenButton) return 'learned:listen';
   if (button === learned.stopButton) return 'learned:stop';
@@ -280,6 +303,7 @@ function buttonId(button: HTMLButtonElement): string | null {
 }
 function resolveButton(id: string | null): HTMLButtonElement | null {
   if (!id) return null;
+  if (id.startsWith('inspect:')) return inspection.buttons.get(id) ?? null;
   if (id.startsWith('adjust:')) return ui.transformStepButtons.get(id.slice(7)) || null;
   if (id === 'test:click') return ui.testGestureButton;
   if (id === 'export:stl') return ui.stlExportButton;
@@ -362,7 +386,7 @@ function processGesture(output: GestureOutput) {
     const button = resolveButton(activation.activate);
     if (!eligible(button)) return;
     if (button === ui.testGestureButton) testClick('gesture');
-    else if (button === tsm.button || button === learned.listenButton || button === learned.stopButton) button.click();
+    else if (button === tsm.button || button === learned.listenButton || button === learned.stopButton || activation.activate.startsWith('inspect:')) button.click();
     else if (button.dataset.transformStep) adjustPreview(button.dataset.transformStep, 'gesture-rules');
     else if (button === ui.stlExportButton) exportSelectedSTL('gesture-rules');
     else if (activation.activate.startsWith('tool:')) void runTool(activation.activate.slice(5) as Tool, 'gesture-rules');
@@ -400,6 +424,7 @@ function completeCalibration(session: CalibrationSession) {
   profile = tunedProfile(calibratedProfile); recognizer.setProfile(profile); resetActivation(); hasSavedCalibration = true;
   try { localStorage.setItem('signtoast-calibration', JSON.stringify(calibratedProfile)); } catch { /* Mapping remains valid for this session. */ }
   calibration = null; useMappingButton.hidden = true;
+  inspection.refresh();
   ui.setCalibration(tuning.mode === 'one-hand' ? 'Mapping saved. Hold over Test click; no pinch needed.' : 'Calibration complete. Hover a tool, then pinch.', tuning.mode === 'one-hand' ? 2 : 4);
   setTimeout(() => { if (!calibration) ui.setCalibration('', 0); }, 3500);
 }
@@ -411,6 +436,7 @@ function beginCalibration() {
   controller.cancel(); recognizer.reset();
   moving = null; scaling = null; resetActivation();
   calibration = { stage: 0, cyclesAtStart: 0, started: performance.now(), session: new CalibrationSession(profile, { singleHand: tuning.mode === 'one-hand' }) };
+  inspection.refresh();
   useMappingButton.hidden = false;
   ui.setCalibration(tuning.mode === 'one-hand' ? 'Show your pointer hand comfortably for one second. No pinch needed.' : 'Show both hands with fingers open for one second.', 1);
 }
@@ -551,7 +577,7 @@ const tracking = new TrackingClient({
       ui.clearManipulationFeedback();
       recognizer.reset(); ui.setGestureCursor(0, 0, false, false); ui.setCalibration('', 0);
       ui.handCanvas.getContext('2d')?.clearRect(0, 0, ui.handCanvas.width, ui.handCanvas.height);
-      ui.setCameraState(false); ui.setStatus(status.message);
+      ui.setCameraState(false); ui.setStatus(status.message); inspection.refresh();
     }
   },
   onFrame: frame => {
@@ -591,12 +617,14 @@ const tracking = new TrackingClient({
     }
   },
 });
+ui.exampleCameraButton.addEventListener('click', () => ui.cameraButton.click());
 ui.cameraButton.addEventListener('click', async () => {
-  if (cameraRunning) { tracking.stop(); cameraRunning = false; calibration = null; useMappingButton.hidden = true; moving = null; scaling = null; movePhase = 'ready'; recognizer.reset(); resetActivation(); ui.clearManipulationFeedback(); ui.setCameraState(false); ui.setGestureCursor(0, 0, false, false); ui.setCalibration('', 0); return; }
+  if (cameraRunning) { tracking.stop(); cameraRunning = false; calibration = null; useMappingButton.hidden = true; moving = null; scaling = null; movePhase = 'ready'; recognizer.reset(); resetActivation(); ui.clearManipulationFeedback(); ui.setCameraState(false); ui.setGestureCursor(0, 0, false, false); ui.setCalibration('', 0); inspection.refresh(); return; }
   ui.cameraButton.disabled = true;
+  ui.exampleCameraButton.disabled = true;
   try { if (!assetReady) throw Error('Local tracking assets are not ready. Reload or check your release files.'); await tracking.start(ui.video); cameraRunning = true; ui.setCameraState(true); resetActivation(); if (!hasSavedCalibration && tuning.mode === 'pinch') beginCalibration(); else ui.setCalibration(hasSavedCalibration ? 'Saved mapping loaded. Use Test click before editing.' : 'Using default mapping with dwell assist. Calibrate if the pointer cannot reach the tools.', 0); }
   catch (error) { ui.setStatus(error instanceof Error ? error.message : 'Camera could not start.'); }
-  finally { ui.cameraButton.disabled = false; }
+  finally { ui.cameraButton.disabled = false; ui.exampleCameraButton.disabled = false; inspection.refresh(); }
 });
 ui.calibrateButton.addEventListener('click', beginCalibration);
 ui.dominantHandSelect.addEventListener('change', () => { profile = { ...profile, dominantHand: ui.dominantHandSelect.value === 'Left' ? 'Left' : 'Right' }; calibratedProfile = { ...calibratedProfile, dominantHand: profile.dominantHand }; recognizer.setProfile(profile); resetActivation(); try { localStorage.setItem('signtoast-calibration', JSON.stringify(calibratedProfile)); } catch {} if (cameraRunning) beginCalibration(); });
@@ -615,7 +643,7 @@ function changeTuning() {
   buttonActivation = new TargetActivation({ mode: mode === 'pinch' ? 'pinch' : 'dwell', hoverMs: tuning.hoverMs, maxCaptureDriftPx: 64 }); resetActivation();
   moving = null; scaling = null;
   try { localStorage.setItem('signtoast-input-settings', JSON.stringify(tuning)); } catch {}
-  if (tuning.mode !== 'pinch' && calibration) { calibration = null; useMappingButton.hidden = true; ui.setCalibration('Dwell is using your current mapping. Hold over Test click to practice; Calibrate maps a comfortable range.', 0); }
+  if (tuning.mode !== 'pinch' && calibration) { calibration = null; useMappingButton.hidden = true; ui.setCalibration('Dwell is using your current mapping. Hold over Test click to practice; Calibrate maps a comfortable range.', 0); inspection.refresh(); }
   else if (calibration) beginCalibration();
   ui.setStatus(mode === 'one-hand' ? 'One-hand dwell: keep your pointer hand visible, hold over controls, then move off buttons to rearm. No pinch needed.' : `Input tuned: ${tuning.sensitivity}, ${tuning.mode === 'dwell' ? 'dwell assist' : 'pinch'}, ${tuning.hoverMs} ms hover. Release your hands, then try Test click.`);
 }
@@ -647,42 +675,60 @@ ui.openProjectButton.addEventListener('click', () => {
   projectPicking = true;
   moving = null; scaling = null; resetActivation(); ui.clearManipulationFeedback();
   ui.update({ ...controller.state, busy: true }, controller.meshes);
+  inspection.refresh();
   try { ui.projectFileInput.click(); }
   catch { finishPicking(); ui.setStatus('The file picker could not open. Try Open project again.'); }
 });
 function finishPicking() {
   projectPicking = false; recognizer.reset(); resetActivation();
   ui.update({ ...controller.state, busy: controller.state.busy || !initialized || projectOpening }, controller.meshes);
+  inspection.refresh();
 }
 ui.projectFileInput.addEventListener('cancel', finishPicking);
-ui.projectFileInput.addEventListener('change', () => { finishPicking(); void openProject(); });
-async function openProject() {
+ui.projectFileInput.addEventListener('change', () => {
   const file = ui.projectFileInput.files?.[0];
-  if (!file || projectOpening) return;
-  if (!initialized || controller.state.busy || controller.state.draft) {
+  finishPicking();
+  if (file) void openProject(file.name, () => {
+    if (file.size > MAX_PROJECT_FILE_BYTES) throw Error('Project exceeds the 8 MB file limit.');
+    return file.text();
+  });
+});
+ui.tryBushingButton.addEventListener('click', () => void openProject('Flanged guide bushing', async () => {
+  const response = await fetch('/examples/flanged-guide-bushing-project.json', { redirect: 'error' });
+  if (!response.ok) throw Error('The bundled bushing project is unavailable.');
+  return response.text();
+}, true));
+async function openProject(filename: string, read: () => Promise<string>, example = false) {
+  if (projectOpening || projectPicking) return;
+  if (!initialized || controller.state.busy || controller.state.draft || (example && calibration)) {
     ui.setStatus('Commit or Cancel the current preview, then open your project again.'); return;
   }
   projectOpening = true;
   moving = null; scaling = null; resetActivation(); ui.clearManipulationFeedback();
   ui.update({ ...controller.state, busy: true }, controller.meshes);
+  inspection.refresh();
+  const wasExample = exampleMode;
   try {
-    if (file.size > MAX_PROJECT_FILE_BYTES) throw Error('Project exceeds the 8 MB file limit.');
-    const saved = parseProjectFile(await file.text());
-    if (!await ui.reviewProject(file.name, saved.solids.length, saved.commands.length)) {
+    const saved = parseProjectFile(await read());
+    if ((!example || controller.state.scene.solids.length > 0) && !await ui.reviewProject(filename, saved.solids.length, saved.commands.length, example)) {
       ui.setStatus('Open cancelled. Current scene preserved.'); return;
     }
+    if (example) exampleMode = true;
     if (!await controller.restore(saved)) throw Error(controller.state.message);
-    persistenceReady = true;
-    presentation.update(controller.state, initialized, persistenceReady);
+    exampleMode = example;
+    if (!example) persistenceReady = true;
+    presentation.update(controller.state, initialized, persistenceReady && !exampleMode);
     selectionMode = false; ui.setSelectedTool(null); viewport.fit();
-    ui.confirmAction(`Opened ${file.name}: ${saved.solids.length} solid${saved.solids.length === 1 ? '' : 's'}.`);
-    ui.setStatus('Project opened and saved locally. Undo starts with edits made after opening.');
+    ui.confirmAction(example ? 'Bushing opened. Try Scale, then Commit to inspect a new size.' : `Opened ${filename}: ${saved.solids.length} solid${saved.solids.length === 1 ? '' : 's'}.`);
+    ui.setStatus(example ? 'Try scaling to 1.1× and commit. Export the project to keep your example edits.' : 'Project opened and saved locally. Undo starts with edits made after opening.');
   } catch (error) {
+    exampleMode = wasExample;
     ui.setStatus(`Could not open project. ${error instanceof Error ? error.message : 'Invalid project file.'} Current scene preserved.`);
   } finally {
     projectOpening = false; ui.projectFileInput.value = '';
     recognizer.reset(); resetActivation();
     ui.update({ ...controller.state, busy: controller.state.busy || !initialized }, controller.meshes);
+    inspection.refresh();
   }
 }
 const snapshotButton = document.createElement('button');
@@ -792,8 +838,9 @@ async function initialize() {
   if (recovery.message) ui.setStatus(recovery.message);
   initialized = true;
   ui.resetButton.disabled = false;
+  ui.exampleCameraButton.disabled = !assetReady;
   presentation.update(controller.state, initialized, persistenceReady);
   if (controller.state.scene.solids.length) viewport.fit();
 }
 void initialize();
-window.addEventListener('beforeunload', () => { tracking.stop(); tsm.dispose(); learned.dispose(); geometry.dispose(); viewport.dispose(); presentation.dispose(); });
+window.addEventListener('beforeunload', () => { inspection.dispose(); tracking.stop(); tsm.dispose(); learned.dispose(); geometry.dispose(); viewport.dispose(); presentation.dispose(); });

@@ -1,0 +1,11 @@
+{
+  "commandId": "example-subtract-001",
+  "baseSceneRevision": 3,
+  "source": "gesture-rules",
+  "ast": {
+    "type": "Subtract",
+    "targetId": "example-box",
+    "cutterId": "example-cylinder",
+    "resultId": "example-through-hole"
+  }
+}
