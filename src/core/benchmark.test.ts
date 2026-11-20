@@ -79,6 +79,50 @@ describe('fixed-window performance benchmark', () => {
     expect(benchmark.finish(50000)).toBeNull();
   });
 
+  it('clips TSM listening to the measured window and counts only the frames observed while listening', () => {
+    const benchmark = new PerformanceBenchmark();
+    benchmark.start(100);
+    benchmark.setTsmListening(true, 1100);
+    benchmark.add('landmark_ms', 20, 1200); // Warm-up.
+    benchmark.add('camera_delivered_frame', 1, 3200);
+    benchmark.add('landmark_ms', 19, 3300);
+    benchmark.add('tsm_inference_ms', 38, 3400);
+    benchmark.setTsmListening(false, 4100);
+    benchmark.add('camera_delivered_frame', 1, 4200);
+    benchmark.add('landmark_ms', 20, 5000);
+    benchmark.setTsmListening(true, 18100);
+    benchmark.setTsmListening(true, 19100); // An unchanged observation cannot restart the segment.
+    benchmark.add('render_frame_ms', 16, 20100);
+    benchmark.add('tsm_inference_ms', 42, 23000);
+    benchmark.add('camera_delivered_frame', 1, 23100); // Upper boundary is exclusive.
+    const result = benchmark.finish(24100, { recognition: 'rules' })!;
+    expect(result.metadata.recognition).toBe('mixed-tsm');
+    expect(result.tsm).toEqual({
+      listeningMs: 6000, listeningWindows: 2, timedPredictions: 2,
+      cameraFrames: 1, trackingFrames: 1, renderFrames: 1,
+    });
+    expect(result.metrics.landmark_ms.samples).toBe(2);
+    expect(result.metrics.tsm_inference_ms.p95).toBe(42);
+    expect(benchmark.finish(25100)!.tsm).toEqual(result.tsm);
+  });
+
+  it('labels full listening accurately and excludes warm-up-only listening from the next run', () => {
+    const benchmark = new PerformanceBenchmark();
+    benchmark.start(0);
+    benchmark.setTsmListening(true, 0);
+    const full = benchmark.finish(23000, { recognition: 'mit-tsm' })!;
+    expect(full.metadata.recognition).toBe('mit-tsm');
+    expect(full.tsm).toMatchObject({ listeningMs: 20000, listeningWindows: 1, timedPredictions: 0 });
+    benchmark.start(24000);
+    benchmark.setTsmListening(true, 24000);
+    benchmark.add('tsm_inference_ms', 40, 25000);
+    benchmark.setTsmListening(false, 26999);
+    const warmupOnly = benchmark.finish(47000, { recognition: 'mit-tsm' })!;
+    expect(warmupOnly.metadata.recognition).toBe('rules');
+    expect(warmupOnly.tsm).toMatchObject({ listeningMs: 0, listeningWindows: 0, timedPredictions: 0 });
+    expect(warmupOnly.metrics.tsm_inference_ms).toBeUndefined();
+  });
+
   it('validates configuration and start times', () => {
     for (const options of [{ warmupMs: -1 }, { durationMs: 0 }, { durationMs: Infinity }, { maxSamplesPerMetric: 1.5 }, { maxSamplesPerMetric: 0 }]) {
       expect(() => new PerformanceBenchmark(options)).toThrow(RangeError);

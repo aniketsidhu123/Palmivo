@@ -16,6 +16,7 @@ const icons: Record<string, string> = {
   move: '<path d="M12 3v18M3 12h18M8 7l4-4 4 4M8 17l4 4 4-4M7 8l-4 4 4 4M17 8l4 4-4 4"/>',
   scale: '<path d="M14 3h7v7M21 3l-8 8M10 21H3v-7M3 21l8-8"/><path d="M3 9V3h6M15 21h6v-6" opacity=".45"/>',
   subtract: '<path d="m9 3 8 4v9l-8 5-7-5V7zM2 7l7 5 8-5M9 12v9"/><path d="M15 11h7M18.5 7.5v7"/><path d="M15 11h7"/>',
+  union: '<path d="M3 3h11v5h7v13H8v-7H3zM8 14V8h6"/><path d="M14.5 11v7M11 14.5h7"/>',
   undo: '<path d="M8 5 3 10l5 5M3 10h11a7 7 0 0 1 0 14" transform="translate(0 -3)"/>',
   commit: '<path d="m5 12 4 4L19 6"/>',
   cancel: '<path d="m6 6 12 12M18 6 6 18"/>',
@@ -72,6 +73,7 @@ const toolData: Array<[Tool, string, string, string]> = [
   ['box', 'Box', 'B', 'Create a box'], ['cylinder', 'Cylinder', 'C', 'Create a cylinder'],
   ['select', 'Select', 'V', 'Select a solid'], ['move', 'Move', 'M', 'Move on the XY plane; pinch and drag, or use the mouse'],
   ['scale', 'Scale', 'S', 'Scale with two hands'], ['subtract', 'Subtract', 'D', 'Subtract a cutter from the selected target'],
+  ['union', 'Union', 'U', 'Join the selected solid with a second solid'],
   ['undo', 'Undo', 'Ctrl Z', 'Undo the last committed command (Ctrl+Z)'],
 ];
 
@@ -85,7 +87,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     <main class="workspace">
       <section class="workspace-heading"><div><div class="eyebrow">LOCAL SPATIAL WORKSPACE</div><h1>Shape with intent<span>.</span></h1></div><div class="readiness" id="assets-status"><span class="readiness-icon">↻</span><div><strong>Preparing local assets</strong><span>Checking geometry & tracking runtime</span></div></div></section>
       <div class="workspace-grid">
-        <aside class="tool-rail" aria-label="CAD tools"><div class="rail-label">TOOLS <span>01—07</span></div><div class="tool-list">${toolData.map(([tool,label,key,title], i) => `${i === 2 || i === 6 ? '<div class="tool-divider"></div>' : ''}<button class="tool-button" data-tool="${tool}" title="${title}" aria-label="${title}">${icon(tool)}<span>${label}</span><kbd>${key}</kbd></button>`).join('')}</div><div class="rail-bottom"><button data-tool="pause" class="tool-button pause-button">${icon('pause')}<span>Pause</span><kbd>␣</kbd></button><button id="reset-scene" class="reset-button">${icon('reset')}Reset workspace</button></div></aside>
+        <aside class="tool-rail" aria-label="CAD tools"><div class="rail-label">TOOLS <span>01—08</span></div><div class="tool-list">${toolData.map(([tool,label,key,title]) => `${tool === 'select' || tool === 'undo' ? '<div class="tool-divider"></div>' : ''}<button class="tool-button" data-tool="${tool}" title="${title}" aria-label="${title}">${icon(tool)}<span>${label}</span><kbd>${key}</kbd></button>`).join('')}</div><div class="rail-bottom"><button data-tool="pause" class="tool-button pause-button">${icon('pause')}<span>Pause</span><kbd>␣</kbd></button><button id="reset-scene" class="reset-button">${icon('reset')}Reset workspace</button></div></aside>
         <section class="stage-shell" aria-label="3D scene">
           <div class="stage-toolbar"><div><span class="stage-dot"></span><span>MODEL SPACE</span><span id="scene-revision" class="stage-revision">REV 000</span></div><div class="stage-options"><span id="solid-count">0 solids</span><span class="stage-separator">/</span><span>mm</span><span class="stage-view">PERSPECTIVE</span></div></div>
           <div class="viewport-wrap"><div id="viewport" class="viewport"></div><div class="viewport-label"><span class="corner-mark"></span>WORLD SPACE <span>XY / Z FIXED</span></div><div id="scene-objects" class="scene-objects" aria-label="Scene solids"></div><div id="empty-scene" class="empty-scene"><span class="empty-glyph">${icon('box')}</span><h2>A space for your next idea.</h2><p>Choose <strong>Box</strong> or <strong>Cylinder</strong> to start building.</p><span>GESTURE CONTROL OR MOUSE & KEYBOARD</span></div><div class="scene-axis" aria-hidden="true"><span class="axis-y">Y</span><span class="axis-x">X</span><span class="axis-z">Z</span><i></i></div><div id="draft-badge" class="draft-badge" hidden><span></span>DRAFT PREVIEW</div></div>
@@ -216,6 +218,12 @@ export function createUI(root: HTMLElement): WorkspaceUI {
       const cutter = state.scene.solids.find(s => s.id === draft.cutterId)?.name;
       return cutter ? `Cutter selected: ${cutter}. Choose Commit to subtract from ${target}.` : `Target: ${target}. Select a different solid as the Cutter.`;
     }
+    if (state.draft?.kind === 'union') {
+      const { targetId, otherId } = state.draft;
+      const target = state.scene.solids.find(solid => solid.id === targetId)?.name ?? targetId;
+      const other = state.scene.solids.find(solid => solid.id === otherId)?.name;
+      return other ? `Choose Commit to join ${target} and ${other}.` : `${target} selected. Choose the second solid to join.`;
+    }
     const fallbackHint = state.draft?.kind === 'scale' ? ' Mouse: scroll, or use + / −.' : state.draft?.kind === 'move' ? ' Mouse: drag in the viewport.' : '';
     return (state.message || (state.draft ? 'Adjust your preview, then Commit or Cancel.' : 'Choose a primitive to begin.')) + fallbackHint;
   };
@@ -239,7 +247,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     text(q('#selected-position'), position ? position.map(value => value.toFixed(0)).join(' / ') : '— / — / —');
     text(q('#selected-scale'), scale !== undefined ? `${scale.toFixed(2)}×` : '—');
     const preview = state.draft && (state.draft.kind === 'move' || state.draft.kind === 'scale') && state.draft.targetId === selected?.id;
-    const dimensionLabel = state.draft?.kind === 'subtract' ? 'TARGET SIZE' : preview ? 'PREVIEW SIZE' : 'FINAL SIZE';
+    const dimensionLabel = state.draft?.kind === 'subtract' ? 'TARGET SIZE' : state.draft?.kind === 'union' ? 'FIRST SOLID SIZE' : preview ? 'PREVIEW SIZE' : 'FINAL SIZE';
     text(q('#dimensions-label'), dimensionLabel);
     const measured = selectedMeasurement?.id === selected?.id ? selectedMeasurement : null;
     const factor = preview && state.draft?.kind === 'scale' && measured ? state.draft.uniformScale / measured.scale : 1;
@@ -257,9 +265,11 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   const updateButtonStates = () => {
     if (!currentState) return;
     const state = currentState;
+    const incompleteBoolean = (state.draft?.kind === 'subtract' && !state.draft.cutterId) || (state.draft?.kind === 'union' && !state.draft.otherId);
     for (const [tool, button] of paletteButtons) {
       const hasSelection = !!state.selectedId;
-      button.disabled = tool === 'pause' ? state.busy : tool === 'cancel' ? !state.draft || state.busy : tool === 'commit' ? !state.draft || state.busy || state.paused || (state.draft.kind === 'subtract' && !state.draft.cutterId) : state.busy || state.paused || !!state.draft || (['move', 'scale', 'subtract'].includes(tool) && !hasSelection) || (tool === 'undo' && !state.historyCount) || (['box', 'cylinder'].includes(tool) && state.scene.solids.length >= 10);
+      const isBooleanTool = tool === 'subtract' || tool === 'union';
+      button.disabled = tool === 'pause' ? state.busy : tool === 'cancel' ? !state.draft || state.busy : tool === 'commit' ? !state.draft || state.busy || state.paused || incompleteBoolean : state.busy || state.paused || !!state.draft || ((tool === 'move' || tool === 'scale' || isBooleanTool) && !hasSelection) || (isBooleanTool && state.scene.solids.length < 2) || (tool === 'undo' && !state.historyCount) || (['box', 'cylinder'].includes(tool) && state.scene.solids.length >= 10);
       button.classList.toggle('is-active', tool === selectedTool);
       button.setAttribute('aria-pressed', String(tool === selectedTool));
     }
@@ -339,6 +349,9 @@ export function createUI(root: HTMLElement): WorkspaceUI {
       const selected = state.scene.solids.find(solid => solid.id === state.selectedId);
       text(q('#selection-label'), selected ? selected.name.toUpperCase() : 'NO SELECTION');
       const objectList = q('#scene-objects');
+      const booleanDraft = state.draft?.kind === 'subtract' || state.draft?.kind === 'union' ? state.draft : null;
+      const isUnion = booleanDraft?.kind === 'union';
+      const otherId = booleanDraft?.kind === 'subtract' ? booleanDraft.cutterId : booleanDraft?.otherId;
       const ids = new Set(state.scene.solids.map(solid => solid.id));
       for (const [id, entry] of objectButtons) {
         if (!ids.has(id)) { entry.button.remove(); objectButtons.delete(id); }
@@ -354,24 +367,25 @@ export function createUI(root: HTMLElement): WorkspaceUI {
         }
         const { button, color, name, role } = entry;
         button.classList.toggle('is-selected', solid.id === state.selectedId);
-        button.disabled = state.busy || state.paused || !!state.draft && state.draft.kind !== 'subtract';
+        button.disabled = state.busy || state.paused || (!!state.draft && !booleanDraft) || solid.id === booleanDraft?.targetId;
         const pressed = String(solid.id === state.selectedId);
         if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed', pressed);
         if (color.dataset.color !== solid.color) { color.style.background = solid.color; color.dataset.color = solid.color; }
         text(name, solid.name);
-        text(role, state.draft?.kind === 'subtract' ? solid.id === state.draft.targetId ? 'TARGET' : solid.id === state.draft.cutterId ? 'CUTTER' : '' : solid.id === state.selectedId ? 'SELECTED' : '');
+        const operandRole = solid.id === booleanDraft?.targetId ? (isUnion ? 'FIRST' : 'TARGET') : solid.id === otherId ? (isUnion ? 'SECOND' : 'CUTTER') : '';
+        text(role, booleanDraft ? operandRole : solid.id === state.selectedId ? 'SELECTED' : '');
       }
-      const subtract = state.draft?.kind === 'subtract' ? state.draft : null;
-      const target = subtract ? state.scene.solids.find(solid => solid.id === subtract.targetId) : null;
-      const cutter = subtract ? state.scene.solids.find(solid => solid.id === subtract.cutterId) : null;
-      text(q('.selected-panel .section-heading h3'), subtract ? 'Boolean operands' : 'Selected solid');
-      text(q('#selected-name'), subtract ? `Target: ${target?.name ?? '—'}` : selected?.name ?? 'Nothing selected');
-      text(q('#selected-type'), subtract ? 'TARGET − CUTTER' : selected?.recipe.kind.toUpperCase() ?? '—');
+      const target = state.scene.solids.find(solid => solid.id === booleanDraft?.targetId);
+      const other = state.scene.solids.find(solid => solid.id === otherId);
+      text(q('.selected-panel .section-heading h3'), booleanDraft ? 'Boolean operands' : 'Selected solid');
+      text(q('#selected-name'), booleanDraft ? `${isUnion ? 'First solid' : 'Target'}: ${target?.name ?? '—'}` : selected?.name ?? 'Nothing selected');
+      text(q('#selected-type'), booleanDraft ? (isUnion ? 'FIRST + SECOND' : 'TARGET − CUTTER') : selected?.recipe.kind.toUpperCase() ?? '—');
       q('.selected-panel').hidden = state.draft?.kind === 'create';
-      q('.property-grid').hidden = !!subtract;
-      booleanSummary.hidden = !subtract;
-      text(booleanSummary, subtract ? `Cutter: ${cutter?.name ?? 'Choose a different solid'}` : '');
-      booleanSummary.classList.toggle('has-cutter', !!cutter);
+      q('.property-grid').hidden = !!booleanDraft;
+      booleanSummary.hidden = !booleanDraft;
+      text(booleanSummary, booleanDraft ? `${isUnion ? 'Second solid' : 'Cutter'}: ${other?.name ?? 'Choose a different solid'}` : '');
+      booleanSummary.classList.toggle('has-cutter', !!other && !isUnion);
+      booleanSummary.classList.toggle('has-join', !!other && isUnion);
       q('#pipeline-draft').classList.toggle('pipeline-active', !!state.draft);
       q('#pipeline-ast').classList.toggle('pipeline-active', !!state.lastCommand && !state.draft);
       const ast = state.draft ? draftAST(state.draft) : state.lastCommand?.ast;
@@ -470,5 +484,6 @@ function draftAST(draft: Draft): unknown {
     case 'move': return { type: 'Move', targetId: draft.targetId, position: draft.position };
     case 'scale': return { type: 'Scale', targetId: draft.targetId, uniformScale: draft.uniformScale };
     case 'subtract': return { type: 'Subtract', targetId: draft.targetId, cutterId: draft.cutterId ?? '(choose cutter)', resultId: draft.resultId };
+    case 'union': return { type: 'Union', targetId: draft.targetId, otherId: draft.otherId ?? '(choose second solid)', resultId: draft.resultId };
   }
 }

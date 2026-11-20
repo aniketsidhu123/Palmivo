@@ -5,8 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 const root = path.resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 // Retain the previous environment variable for existing local launch configurations.
-const port = Number(process.env.PALMIVO_PORT || process.env.SIGNTOAST_PORT || 4173);
-const mime = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.task': 'application/octet-stream', '.png': 'image/png' };
+const candidate = process.argv.includes('--candidate');
+const port = Number(process.env.PALMIVO_PORT || process.env.SIGNTOAST_PORT || (candidate ? 4181 : 4173));
+const mime = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.mjs': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.task': 'application/octet-stream', '.png': 'image/png' };
 const server = http.createServer(async (req, res) => {
   try {
     if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405); res.end(); return; }

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Palmivo · Gesture Capture</title>
+</head>
+<body>
+  <main class="capture">
+    <header><a href="./">← Palmivo workspace</a><h1>Gesture capture</h1>
+      <p>Record a labelled session for the Palmivo gesture model. Exported clips contain numeric features and labels. Camera video stays in the preview.</p></header>
+    <div class="layout">
+      <section><video id="preview" autoplay muted playsinline aria-label="Mirrored camera preview"></video>
+        <p id="camera-status" role="status">Camera off</p><button id="camera">Enable camera</button>
+        <label><input id="consent" type="checkbox"> I agree to save my gesture features locally for this pilot.</label>
+        <label>Pointer hand <select id="hand"><option>Right</option><option>Left</option></select></label>
+        <label>Session <select id="split"><option value="train">Training</option><option value="validation">Validation</option><option value="test">Held-out test</option></select></label>
+        <label id="shoulder-label" hidden><input id="shoulders" type="checkbox"> Capture shoulder features too</label>
+      </section>
+      <section>
+        <p>Trace a small square for <b>Box</b> and a circle for <b>Cylinder</b>, moving your pointer hand. Bring both open palms together for <b>Union</b>. Pause briefly between tokens. Repeated tokens need a distinct pause.</p>
+        <h2 id="prompt" aria-live="polite"></h2>
+        <p id="capture-status" role="status"></p>
+        <button id="record" disabled>Record next clip</button>
+        <button id="discard" disabled>Discard last clip</button>
+        <button id="export" disabled>Export session JSON</button>
+        <p>During validation or test recording, a helper can press J at each gesture end. Use the review fields to correct marker times before exporting.</p>
+        <section id="review" hidden><h3>Review last clip</h3>
+          <p id="coverage"></p>
+          <label>Preview time <input id="timeline" type="range" min="0" value="0" step="1"></label>
+          <output id="position"></output><canvas id="review-canvas" width="320" height="240"></canvas>
+          <label>Gesture ends in milliseconds, comma separated <input id="ends" type="text" placeholder="1200, 2600"></label>
+          <button id="save-ends">Save gesture ends</button>
+        </section>
+      </section>
+    </div>
+  </main>
+  <script type="module" src="/src/learned/collect.ts"></script>
+</body>
+</html>

@@ -21,7 +21,8 @@ export function validatePosition(value: unknown): asserts value is Vec3 {
 export function validateScale(value: unknown): asserts value is number {
   assert(typeof value === 'number' && Number.isFinite(value) && value >= MIN_SCALE && value <= MAX_SCALE, 'Uniform scale must be between 0.5 and 2.0.');
 }
-function validateRecipe(recipe: unknown, depth: number, budget: { remaining: number }): void {
+interface RecipeValidation { remaining: number; schemaVersion: SceneDocument['schemaVersion'] }
+function validateRecipe(recipe: unknown, depth: number, budget: RecipeValidation): void {
   record(recipe, 'Invalid solid recipe.');
   assert(depth < 32, 'Invalid or excessively nested solid recipe.');
   assert(--budget.remaining >= 0, `Project recipes exceed the ${MAX_RECIPE_NODES}-node complexity limit.`);
@@ -38,12 +39,18 @@ function validateRecipe(recipe: unknown, depth: number, budget: { remaining: num
     case 'subtract':
       fields(recipe, ['kind', 'target', 'cutter'], 'subtraction recipe');
       validateSolid(recipe.target, depth + 1, budget); validateSolid(recipe.cutter, depth + 1, budget);
-      assert((recipe.target as Record<string, unknown>).id !== (recipe.cutter as Record<string, unknown>).id, 'The cutter must be a different solid.');
+      assert(recipe.target.id !== recipe.cutter.id, 'The cutter must be a different solid.');
+      break;
+    case 'union':
+      assert(budget.schemaVersion === 2, 'Union recipes require a Palmivo version 2 project.');
+      fields(recipe, ['kind', 'target', 'other'], 'union recipe');
+      validateSolid(recipe.target, depth + 1, budget); validateSolid(recipe.other, depth + 1, budget);
+      assert(recipe.target.id !== recipe.other.id, 'Union requires two different solids.');
       break;
     default: throw new Error('Unknown solid recipe.');
   }
 }
-function validateSolid(solid: unknown, depth: number, budget: { remaining: number }): asserts solid is { id: string } {
+function validateSolid(solid: unknown, depth: number, budget: RecipeValidation): asserts solid is { id: string } {
   record(solid, 'Invalid solid.');
   fields(solid, ['id', 'name', 'recipe', 'position', 'scale', 'color'], 'solid');
   identifier(solid.id, 'solid');
@@ -51,7 +58,7 @@ function validateSolid(solid: unknown, depth: number, budget: { remaining: numbe
   assert(typeof solid.color === 'string' && /^#[0-9a-f]{6}$/i.test(solid.color), 'Invalid solid color.');
   validatePosition(solid.position); validateScale(solid.scale); validateRecipe(solid.recipe, depth, budget);
 }
-function validateSavedAST(ast: unknown): void {
+function validateSavedAST(ast: unknown, schemaVersion: SceneDocument['schemaVersion']): void {
   record(ast, 'Invalid saved command.');
   switch (ast.type) {
     case 'Create':
@@ -72,19 +79,25 @@ function validateSavedAST(ast: unknown): void {
       identifier(ast.targetId, 'target'); identifier(ast.cutterId, 'cutter'); identifier(ast.resultId, 'result');
       assert(ast.targetId !== ast.cutterId, 'The cutter must be a different solid.');
       assert(ast.resultId !== ast.targetId && ast.resultId !== ast.cutterId, 'Invalid result ID.'); break;
+    case 'Union':
+      assert(schemaVersion === 2, 'Union commands require a Palmivo version 2 project.');
+      fields(ast, ['type', 'targetId', 'otherId', 'resultId'], 'Union command');
+      identifier(ast.targetId, 'first operand'); identifier(ast.otherId, 'second operand'); identifier(ast.resultId, 'result');
+      assert(ast.targetId !== ast.otherId, 'Union requires two different solids.');
+      assert(ast.resultId !== ast.targetId && ast.resultId !== ast.otherId, 'Invalid result ID.'); break;
     default: throw new Error('Invalid saved command.');
   }
 }
 export function validateDocument(document: unknown): asserts document is SceneDocument {
   record(document, 'Unsupported project format.');
-  assert(document.schemaVersion === 1 && document.units === 'mm', 'Unsupported project format. Use a Palmivo version 1 project in mm.');
+  assert((document.schemaVersion === 1 || document.schemaVersion === 2) && document.units === 'mm', 'Unsupported project format. Use a Palmivo version 1 or 2 project in mm.');
   fields(document, ['schemaVersion', 'units', 'revision', 'solids', 'commands'], 'project');
   assert(typeof document.revision === 'number', 'Invalid scene revision.');
   assert(Number.isSafeInteger(document.revision) && document.revision >= 0, 'Invalid scene revision.');
   assert(Array.isArray(document.solids) && document.solids.length <= MAX_SOLIDS, 'A project can contain at most 10 visible solids.');
   assert(Array.isArray(document.commands) && document.commands.length <= 10000, 'Invalid command history.');
   const ids = new Set<string>();
-  const budget = { remaining: MAX_RECIPE_NODES };
+  const budget: RecipeValidation = { remaining: MAX_RECIPE_NODES, schemaVersion: document.schemaVersion };
   for (const solid of document.solids) { validateSolid(solid, 0, budget); assert(!ids.has(solid.id), 'Duplicate solid IDs.'); ids.add(solid.id); }
   const commandIds = new Set<string>();
   for (const command of document.commands) {
@@ -94,7 +107,7 @@ export function validateDocument(document: unknown): asserts document is SceneDo
     assert(!commandIds.has(command.commandId), 'Duplicate command ID.');
     assert(typeof command.baseSceneRevision === 'number' && Number.isSafeInteger(command.baseSceneRevision) && command.baseSceneRevision >= 0, 'Invalid saved command revision.');
     assert(command.source === 'gesture-rules' || command.source === 'pointer' || command.source === 'keyboard', 'Invalid saved command source.');
-    validateSavedAST(command.ast);
+    validateSavedAST(command.ast, document.schemaVersion);
     commandIds.add(command.commandId);
   }
 }
@@ -118,6 +131,12 @@ export function validateCommand(request: ExecutionRequest, document: SceneDocume
       assert(exists(ast.targetId) && exists(ast.cutterId), 'Select both a target and a cutter.');
       assert(ast.targetId !== ast.cutterId, 'The cutter must be a different solid.');
       assert(typeof ast.resultId === 'string' && ast.resultId.length > 0 && !exists(ast.resultId), 'Invalid result ID.');
+      break;
+    case 'Union':
+      assert(exists(ast.targetId) && exists(ast.otherId), 'Select both solids to join.');
+      assert(ast.targetId !== ast.otherId, 'Union requires two different solids.');
+      identifier(ast.resultId, 'result');
+      assert(!exists(ast.resultId), 'Invalid result ID.');
       break;
     default: throw new Error('Unknown command.');
   }

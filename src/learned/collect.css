@@ -1,0 +1,14 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; color: #e8f2e8; background: #111816; }
+.capture { max-width: 67rem; margin: 2rem auto; padding: 0 1rem; }
+.capture a { color: #c5f2bd; }
+.layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 23rem), 1fr)); gap: 1rem; }
+.layout > section { padding: 1rem; border: 1px solid #40534a; border-radius: .6rem; background: #192621; }
+.capture video, .capture canvas { display: block; width: min(100%, 32rem); aspect-ratio: 4/3; background: #0d1411; border-radius: .4rem; }
+.capture video { transform: scaleX(-1); }
+.capture canvas { width: min(100%, 20rem); }
+.capture label { display: block; margin: .7rem 0; }
+.capture [hidden] { display: none; }
+.capture :is(button,input,select) { font: inherit; }
+.capture button { padding: .5rem .75rem; margin: .2rem .2rem .2rem 0; cursor: pointer; }
+.capture button:disabled { cursor: default; }
+.capture h2 { color: #c5f2bd; }

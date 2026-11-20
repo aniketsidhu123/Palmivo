@@ -41,3 +41,6 @@
 @media(min-width:851px) and (max-width:1000px){.preset-row{grid-template-columns:36px repeat(3,minmax(0,1fr));gap:4px}.size-preset{height:34px}.preset-field{font-size:8px}.preset-dimensions{font-size:9px}}
 @media(max-width:850px){.size-presets{padding:18px 0}.preset-dimensions{font-size:12px;margin:10px 0 12px}.preset-row{grid-template-columns:58px repeat(3,minmax(0,1fr));gap:8px}.preset-group{gap:8px}.size-preset{height:43px;font-size:13px}.preset-field{font-size:11px}.is-create-draft .instruction-card{padding:14px}.is-create-draft .instruction-card p{font-size:12px;line-height:1.6}.is-create-draft .commit-note{display:block}}
 @media(max-width:480px){.header-actions{gap:5px}.header-actions .quiet-button{padding:8px;gap:5px}.header-actions .quiet-button>span{display:none}.project-review{padding:22px}.project-review-actions{flex-direction:column-reverse}}
+.learned-tools { margin-top: .75rem; }
+.learned-tools summary { cursor: pointer; font-weight: 600; }
+.learned-tools a { display: inline-block; color: #c5f2bd; margin: .65rem 0 .2rem; }

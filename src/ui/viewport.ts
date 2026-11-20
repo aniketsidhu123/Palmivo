@@ -147,12 +147,13 @@ export class CADViewport {
       mesh.scale.setScalar(scale);
       const isPreview = state.draft?.kind === 'create' && state.draft.solid.id === solid.id;
       const isCutter = state.draft?.kind === 'subtract' && state.draft.cutterId === solid.id;
-      mesh.material.color.set(isCutter ? '#f58b72' : solid.color || '#bce8cc');
-      const transparent = isPreview || isCutter;
-      const depthWrite = !isCutter;
+      const isJoinOperand = state.draft?.kind === 'union' && state.draft.otherId === solid.id;
+      mesh.material.color.set(isCutter ? '#f58b72' : isJoinOperand ? '#86d6ee' : solid.color || '#bce8cc');
+      const transparent = isPreview || isCutter || isJoinOperand;
+      const depthWrite = !isCutter && !isJoinOperand;
       const materialFlagsChanged = mesh.material.transparent !== transparent || mesh.material.depthWrite !== depthWrite;
       mesh.material.transparent = transparent;
-      mesh.material.opacity = isCutter ? .43 : isPreview ? .76 : 1;
+      mesh.material.opacity = isCutter ? .43 : isJoinOperand ? .61 : isPreview ? .76 : 1;
       mesh.material.depthWrite = depthWrite;
       mesh.material.emissive.set(isPreview ? '#142c2c' : '#000000');
       if (materialFlagsChanged) mesh.material.needsUpdate = true;

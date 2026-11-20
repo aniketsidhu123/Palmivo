@@ -47,8 +47,9 @@ function inspectSTL(data: ArrayBuffer) {
 }
 
 describe('complete gesture-to-AST CAD demonstration', () => {
-  const scenarios = [13,30,60].flatMap(fps => [{ fps, precise: false, mode: 'default' }, { fps, precise: true, mode: 'precise presets + project reopen' }]);
-  it.each(scenarios)('creates, scales, subtracts, exports, undoes, and cancels $mode through the real pipeline at $fps FPS', async ({ fps, precise }) => {
+  const scenarios = [13,30,60].flatMap(fps => [{ fps, precise: false, bushing: false, mode: 'default' }, { fps, precise: true, bushing: false, mode: 'precise presets + project reopen' }]);
+  scenarios.push({ fps: 15, precise: false, bushing: true, mode: 'flanged guide bushing' });
+  it.each(scenarios)('completes the $mode workflow through the real pipeline at $fps FPS', async ({ fps, precise, bushing }) => {
     const geometry = { build: async (recipe: Parameters<typeof buildMesh>[1]) => buildMesh(kernel, recipe) };
     let controller = new Controller(geometry);
     const recognizer = new GestureRecognizer();
@@ -72,11 +73,15 @@ describe('complete gesture-to-AST CAD demonstration', () => {
       else if (id === 'tool:commit') pendingAction = controller.commit('gesture-rules');
       else if (id === 'tool:scale') { controller.beginScale(); scale = new ScaleSession(controller.state.scene.solids.find(s => s.id === controller.state.selectedId)!.scale); }
       else if (id === 'tool:subtract') controller.beginSubtract();
+      else if (id === 'tool:union') controller.beginUnion();
       else if (id === 'tool:undo') controller.undo();
       else if (id === 'tool:move') controller.beginMove();
       else if (id === 'tool:cancel') controller.cancel();
       else if (id === 'solid:box') controller.select(boxId);
-      else if (id === 'solid:cylinder') controller.chooseCutter(cylinderId);
+      else if (id === 'solid:cylinder') {
+        if (controller.state.draft?.kind === 'union') controller.chooseUnionOperand(cylinderId);
+        else controller.chooseCutter(cylinderId);
+      }
       else if (id === 'solid:restored') controller.select(restoredId);
       else if (id.startsWith('preset:')) expect(controller.applySizePreset(id.slice('preset:'.length))).toBe(true);
       else if (id === 'export:stl' && exportEligible()) {
@@ -129,6 +134,26 @@ describe('complete gesture-to-AST CAD demonstration', () => {
     blockedExport();
     await click('tool:commit'); boxId = controller.state.selectedId!;
     expect(controller.state.scene.solids).toHaveLength(1);
+    if (bushing) {
+      await click('tool:cylinder');
+      await click('preset:cylinder:radius:8'); await click('preset:cylinder:height:40');
+      await click('tool:commit'); cylinderId = controller.state.selectedId!;
+      await click('solid:box'); await click('tool:union'); await click('solid:cylinder');
+      expect(controller.getDraftAST()).toMatchObject({ type: 'Union', targetId: boxId, otherId: cylinderId });
+      expect(controller.state.scene.solids).toHaveLength(2);
+      await click('tool:commit'); boxId = controller.state.selectedId!;
+      await click('tool:cylinder'); await click('preset:cylinder:radius:3');
+      await click('tool:commit'); cylinderId = controller.state.selectedId!;
+      await click('solid:box'); await click('tool:subtract'); await click('solid:cylinder');
+      await click('tool:commit');
+      expect(controller.state.scene.commands.map(command => command.ast.type)).toEqual(['Create', 'Create', 'Union', 'Create', 'Subtract']);
+      await click('export:stl');
+      expect(exports).toHaveLength(1);
+      expect(exports[0].measurements.dimensions).toEqual([20, 20, 40]);
+      expect(controller.exportDocument().schemaVersion).toBe(2);
+      stop(); presentation.dispose();
+      return;
+    }
     await click('tool:scale');
     blockedExport();
     const beforePreview = { ...presentation.diagnostics };

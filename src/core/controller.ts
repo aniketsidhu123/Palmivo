@@ -62,8 +62,26 @@ export class Controller {
   beginMove(): void { if (!this.canBegin()) return; const solid = this.selected(); if (!solid) return this.notify('Select a solid before moving.'); this.start({ kind:'move', targetId:solid.id, position:[...solid.position] }, 'Pinch and drag the selected solid. Release freezes the preview.'); }
   beginScale(): void { if (!this.canBegin()) return; const solid = this.selected(); if (!solid) return this.notify('Select a solid before scaling.'); this.start({ kind:'scale', targetId:solid.id, uniformScale:solid.scale }, 'Pinch both hands and change their separation. Commit when ready.'); }
   beginSubtract(): void { if (!this.canBegin()) return; const solid = this.selected(); if (!solid) return this.notify('Select the target solid first.'); if (this.state.scene.solids.length < 2) return this.notify('Create a second solid to use as a cutter.'); this.start({ kind:'subtract', targetId:solid.id, cutterId:null, resultId:id('difference') }, `Target: ${solid.name}. Select a different solid as the cutter.`); }
+  beginUnion(): void {
+    if (!this.canBegin()) return;
+    const solid = this.selected();
+    if (!solid) return this.notify('Select the first solid to join.');
+    if (this.state.scene.solids.length < 2) return this.notify('Create a second solid to join.');
+    this.start({ kind: 'union', targetId: solid.id, otherId: null, resultId: id('union') }, `First solid: ${solid.name}. Select the second solid to join.`);
+  }
   select(solidId: string): void { if (!this.ready() || this.state.draft || solidId === this.state.selectedId) return; const solid = this.state.scene.solids.find(s => s.id === solidId); if (!solid) return; this.state.selectedId = solidId; this.notify(`${solid.name} selected.`); }
   chooseCutter(solidId: string): void { if (!this.ready() || this.state.draft?.kind !== 'subtract') return; const draft=this.state.draft; if (draft.cutterId === solidId) return; if (solidId === draft.targetId) return this.notify('Choose a different solid as cutter.'); const cutter=this.state.scene.solids.find(s=>s.id===solidId); if (!cutter) return; draft.cutterId=solidId; const target=this.state.scene.solids.find(s=>s.id===draft.targetId); this.notify(`Preview: ${target?.name} − ${cutter.name}. Commit to subtract.`); }
+  chooseUnionOperand(solidId: string): void {
+    if (!this.ready() || this.state.draft?.kind !== 'union') return;
+    const draft = this.state.draft;
+    if (draft.otherId === solidId) return;
+    if (draft.targetId === solidId) return this.notify('Choose a different solid to join.');
+    const other = this.state.scene.solids.find(solid => solid.id === solidId);
+    if (!other) return;
+    draft.otherId = solidId;
+    const target = this.state.scene.solids.find(solid => solid.id === draft.targetId);
+    this.notify(`Preview: ${target?.name} + ${other.name}. Commit to join.`);
+  }
   updateMove(position: Vec3): void {
     if (!this.ready() || this.state.draft?.kind !== 'move') return;
     try {
@@ -88,6 +106,9 @@ export class Controller {
       case 'move': return { type:'Move', targetId:draft.targetId, position:[...draft.position] };
       case 'scale': return { type:'Scale', targetId:draft.targetId, uniformScale:draft.uniformScale };
       case 'subtract': if (!draft.cutterId) throw new Error('Select a cutter before committing.'); return { type:'Subtract', targetId:draft.targetId, cutterId:draft.cutterId, resultId:draft.resultId };
+      case 'union':
+        if (!draft.otherId) throw new Error('Select a second solid before committing.');
+        return { type: 'Union', targetId: draft.targetId, otherId: draft.otherId, resultId: draft.resultId };
     }
   }
   getDraftAST(): CommandAST | null { if (!this.state.draft) return null; try { return this.astForDraft(this.state.draft); } catch { return null; } }
@@ -103,9 +124,25 @@ export class Controller {
       if(draft.kind==='create') { mesh=await this.geometry.build(draft.solid.recipe); meshId=draft.solid.id; next.solids.push(draft.solid); nextSelected=draft.solid.id; }
       else if(draft.kind==='move') { next.solids.find(s=>s.id===draft.targetId)!.position=[...draft.position]; }
       else if(draft.kind==='scale') { next.solids.find(s=>s.id===draft.targetId)!.scale=draft.uniformScale; }
-      else { const target=copy(next.solids.find(s=>s.id===draft.targetId)!); const cutter=copy(next.solids.find(s=>s.id===draft.cutterId)!); const result: Solid={ id:draft.resultId, name:`${target.name} − ${cutter.name}`, color:target.color, position:[0,0,0], scale:1, recipe:{kind:'subtract',target,cutter} }; mesh=await this.geometry.build(result.recipe); meshId=result.id; next.solids=next.solids.filter(s=>s.id!==target.id&&s.id!==cutter.id); next.solids.push(result); nextSelected=result.id; }
+      else {
+        const isUnion = draft.kind === 'union';
+        const secondId = isUnion ? draft.otherId : draft.cutterId;
+        const target = next.solids.find(solid => solid.id === draft.targetId)!;
+        const second = next.solids.find(solid => solid.id === secondId)!;
+        const result: Solid = {
+          id: draft.resultId, name: `${target.name} ${isUnion ? '+' : '−'} ${second.name}`.slice(0, 128),
+          color: target.color, position: [0, 0, 0], scale: 1,
+          recipe: isUnion ? { kind: 'union', target, other: second } : { kind: 'subtract', target, cutter: second },
+        };
+        mesh = await this.geometry.build(result.recipe);
+        meshId = result.id;
+        next.solids = next.solids.filter(solid => solid.id !== target.id && solid.id !== second.id);
+        next.solids.push(result);
+        nextSelected = result.id;
+        if (isUnion) next.schemaVersion = 2;
+      }
       if(job!==this.generation) return false;
-      if(mesh && (!Number.isFinite(mesh.volume)||mesh.volume<=1e-6||mesh.indices.length===0)) throw new Error('The operation produced an empty solid. Move the cutter and try again.');
+      if(mesh && (!Number.isFinite(mesh.volume)||mesh.volume<=1e-6||mesh.indices.length===0)) throw new Error('The operation produced an empty solid. Check the input solids and try again.');
       next.revision++; next.commands.push(request); this.history.push(snapshot); if(this.history.length>20) this.history.shift();
       if(mesh&&meshId) this.meshes.set(meshId,mesh);
       this.state.scene=next; this.state.selectedId=nextSelected; this.state.lastCommand=request; this.state.draft=null; this.state.busy=false; this.pruneMeshes(); this.notify(`${request.ast.type} committed. The scene is saved locally.`); return true;

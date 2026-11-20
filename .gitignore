@@ -11,6 +11,13 @@
 
 # Prepared MediaPipe worker, model, and WASM assets
 /public/tracking/
+/public/learned/wasm/
+/public/learned/gesture.onnx
+/public/learned/manifest.json
+/public/tsm/
+/ml/.venv/
+/ml/data/
+/ml/artifacts/
 
 # Test and Python caches
 /coverage/

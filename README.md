@@ -2,7 +2,7 @@
 
 **Local gesture CAD with a typed command compiler and exportable solid geometry.**
 
-Palmivo turns webcam hand input into editable CAD operations. Users create solids, adjust their dimensions and position, preview changes, and explicitly commit each operation. MediaPipe hand landmarks and temporal gesture rules drive the interface. A typed Abstract Syntax Tree (AST) connects those interactions to real Manifold Boolean geometry.
+Palmivo turns webcam hand input into editable CAD operations. Users create solids, adjust their dimensions and position, preview changes, and explicitly commit each operation. MediaPipe landmarks drive the gesture palette, and pretrained MIT Online TSM adds three optional tool shortcuts. A typed Abstract Syntax Tree (AST) connects those interactions to real Manifold Boolean geometry.
 
 ![Palmivo workspace](docs/media/palmivo-workspace.jpg)
 
@@ -11,6 +11,7 @@ Palmivo turns webcam hand input into editable CAD operations. Users create solid
 - **Two-hand gesture control:** a mirrored cursor, stable button targeting, pinch selection, XY dragging, and continuous uniform scaling.
 - **One-hand dwell:** command access without pinching or raising the other hand, with comfortable-range calibration and precise Move/Scale buttons.
 - **Solid modelling:** boxes, cylinders, selection, translation, scaling, and target-minus-cutter subtraction.
+- **Boolean Union:** fuse two committed solids into one through the same validated preview and Commit workflow. Union projects use format version 2. Version 1 projects remain readable.
 - **Exact dimensions:** independent primitive presets, final mesh measurements, 1 mm XY steps, and 0.1× scale steps.
 - **Explicit transactions:** separate Commit and Cancel, reversible previews, Pause, and a 20-snapshot Undo history.
 - **Inspectable compilation:** draft and committed ASTs, resolved object references, numeric validation, and scene revision checks.
@@ -18,6 +19,8 @@ Palmivo turns webcam hand input into editable CAD operations. Users create solid
 - **STL handoff:** binary STL export of the selected committed solid with millimetre coordinates.
 - **Local execution:** bundled tracking models, JavaScript, and WASM. Camera processing and project storage stay on the device.
 - **Performance instrumentation:** camera and tracking rates, stage timings, a repeatable benchmark, and JSON measurement export.
+- **Pretrained shortcuts:** swipe left to open Box, swipe right to open Cylinder, and give a thumbs up to open Union. The model runs locally in ONNX Runtime Web when listening is armed. Use the regular palette for operand selection and Commit.
+- **Custom gesture pilot:** local landmark capture, optional shoulder features, a causal ST-GCN training pipeline, and browser streaming CTC replay with ONNX Runtime Web.
 - **Alternative input:** mouse and keyboard controls, a Test click counter, CAD snapshots, and canvas-plus-AST recording.
 
 ## Architecture
@@ -27,6 +30,8 @@ flowchart LR
     Camera[Webcam] --> Tracking[MediaPipe tracking worker]
     Tracking --> Recognition[Temporal gesture rules]
     Recognition --> Controller[Draft controller and validation]
+    Camera --> Shortcuts[MIT TSM shortcut worker]
+    Shortcuts --> Controller
     Inputs[Mouse and keyboard] --> Controller
     Controller --> Preview[Reversible Three.js preview]
     Controller --> AST[Typed command AST]
@@ -43,13 +48,13 @@ One controller owns scene state. Every input method uses the same command path. 
 | --- | --- |
 | Application | TypeScript, Vite, HTML/CSS |
 | Tracking | MediaPipe Tasks Vision 0.10.32, GPU worker with CPU fallback |
-| Recognition | Deterministic temporal rules, pinch hysteresis, dwell activation |
+| Recognition | Temporal gesture rules, pinch and dwell, optional MIT Online TSM via ONNX Runtime Web |
 | Rendering | Three.js 0.181.1, WebGL2 |
 | Solid geometry | Manifold 3D 3.3.2, WASM worker |
 | Persistence | IndexedDB and versioned project JSON |
 | Verification | Vitest, independent STL readers, browser QA |
 
-The geometry AST contains `Create`, `Move`, `Scale`, and `Subtract`. Selection, Commit, Cancel, Pause, and Undo remain controller events.
+The geometry AST contains `Create`, `Move`, `Scale`, `Union`, and `Subtract`. Selection, Commit, Cancel, Pause, and Undo remain controller events.
 
 ~~~json
 {
@@ -74,6 +79,8 @@ The geometry AST contains `Create`, `Move`, `Scale`, and `Subtract`. Selection, 
 3. Open **http://127.0.0.1:4173** in Chrome or Edge.
 
 The portable folder includes Node.js and all runtime assets. The launcher starts the local server directly.
+
+The separate **Palmivo-Hybrid** candidate opens on **http://127.0.0.1:4181**. It includes the MIT TSM model, the flanged guide bushing example, Union, and the custom gesture capture and replay tools. See the [offline round guide](docs/OFFLINE_ROUND.md).
 
 ### Source development
 
@@ -111,6 +118,7 @@ Dwell activates ordinary controls after 900 ms and Commit after 1,200 ms. Move o
 | Move | `M`, then drag or use 1 mm XY buttons |
 | Scale | `S`, then scroll, press `+` / `-`, or use 0.1× buttons |
 | Subtract | `D`, then choose the cutter |
+| Union | `U`, then choose the second solid |
 | Commit / Cancel | `Enter` / `Escape` in the workspace |
 | Undo | `Ctrl+Z` |
 | Pause / Resume | `Space` in the workspace |

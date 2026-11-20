@@ -1,0 +1,6 @@
+/.venv/
+/data/
+/artifacts/
+*.pt
+*.onnx
+*.onnx.data

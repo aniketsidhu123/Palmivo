@@ -22,6 +22,7 @@ export function buildMesh(module: ManifoldToplevel, recipe: SolidRecipe): Geomet
       case 'box': return own(module.Manifold.cube(current.dimensions, true));
       case 'cylinder': return own(module.Manifold.cylinder(current.height, current.radius, current.radius, current.segments, true));
       case 'subtract': return own(resolveSolid(current.target, depth + 1).subtract(resolveSolid(current.cutter, depth + 1)));
+      case 'union': return own(resolveSolid(current.target, depth + 1).add(resolveSolid(current.other, depth + 1)));
       default: throw new Error('Unsupported geometry recipe.');
     }
   };
@@ -30,7 +31,7 @@ export function buildMesh(module: ManifoldToplevel, recipe: SolidRecipe): Geomet
     const status = solid.status();
     if (status !== 'NoError') throw new Error(`Solid geometry failed: ${status}`);
     const volume = solid.volume();
-    if (!Number.isFinite(volume) || volume <= 1e-6) throw new Error('The operation produced an empty solid. Move or resize the cutter.');
+    if (!Number.isFinite(volume) || volume <= 1e-6) throw new Error('The operation produced an empty solid. Check the input solids and try again.');
     const mesh = solid.getMesh();
     const count = mesh.vertProperties.length / mesh.numProp;
     const positions = new Float32Array(count * 3);

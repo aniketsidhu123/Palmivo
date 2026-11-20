@@ -29,6 +29,15 @@ export interface BenchmarkResult {
   warmupMs: number;
   durationMs: number;
   metrics: Record<string, BenchmarkMetric>;
+  tsm: {
+    /** Time spent listening, clipped to the measured window. Loading is excluded. */
+    listeningMs: number;
+    listeningWindows: number;
+    cameraFrames: number;
+    trackingFrames: number;
+    renderFrames: number;
+    timedPredictions: number;
+  };
   metadata: Record<string, unknown>;
   notes: string;
 }
@@ -50,6 +59,8 @@ export class PerformanceBenchmark {
   private startedAt: number | null = null;
   private lastObservedAt: number | null = null;
   private metrics = new Map<string, MetricSamples>();
+  private tsmListeningSince: number | null = null;
+  private tsm = { listeningMs: 0, listeningWindows: 0, cameraFrames: 0, trackingFrames: 0, renderFrames: 0 };
   private result: BenchmarkResult | null = null;
 
   constructor(options: { warmupMs?: number; durationMs?: number; maxSamplesPerMetric?: number } = {}) {
@@ -75,7 +86,16 @@ export class PerformanceBenchmark {
     this.startedAt = null;
     this.lastObservedAt = null;
     this.metrics.clear();
+    this.tsmListeningSince = null;
+    this.tsm = { listeningMs: 0, listeningWindows: 0, cameraFrames: 0, trackingFrames: 0, renderFrames: 0 };
     this.result = null;
+  }
+
+  /** Record actual TSM state transitions on the same monotonic clock as observations. */
+  setTsmListening(listening: boolean, now: number): void {
+    if (this.startedAt === null || this.result || !this.observe(now)) return;
+    if (listening) this.tsmListeningSince ??= now;
+    else this.closeTsmWindow(now);
   }
 
   add(name: string, value: number, now: number): boolean {
@@ -84,6 +104,12 @@ export class PerformanceBenchmark {
     const start = this.startedAt + this.warmupMs;
     // The upper boundary is exclusive: a late callback cannot extend the benchmark.
     if (now < start || now >= start + this.durationMs) return false;
+    if (name.startsWith('tsm_') && this.tsmListeningSince === null) return false;
+    if (this.tsmListeningSince !== null) {
+      if (name === 'camera_delivered_frame') this.tsm.cameraFrames++;
+      if (name === 'landmark_ms') this.tsm.trackingFrames++;
+      if (name === 'render_frame_ms') this.tsm.renderFrames++;
+    }
     let metric = this.metrics.get(name);
     if (!metric) {
       metric = { retained: [], writeIndex: 0, count: 0, sum: 0, min: value, max: value };
@@ -116,6 +142,7 @@ export class PerformanceBenchmark {
     if (this.startedAt === null || !Number.isFinite(now) || now < this.lastObservedAt!) return null;
     if (this.result) return this.snapshot(this.result);
     if (this.status(now).phase !== 'complete') return null;
+    this.closeTsmWindow(now);
     const metrics: Record<string, BenchmarkMetric> = {};
     for (const [name, metric] of this.metrics) {
       const sorted = [...metric.retained].sort((a, b) => a - b);
@@ -126,16 +153,34 @@ export class PerformanceBenchmark {
         min: metric.min, max: metric.max, mean: metric.sum / metric.count,
       };
     }
+    const tsm = { ...this.tsm, timedPredictions: metrics.tsm_inference_ms?.samples ?? 0 };
+    const initialRecognition = metadata.recognition;
+    const recognition = tsm.listeningMs >= this.durationMs ? 'mit-tsm'
+      : tsm.listeningMs > 0 || tsm.timedPredictions > 0 ? 'mixed-tsm' : 'rules';
     this.result = {
       schemaVersion: 1,
       startedAtMonotonicMs: this.startedAt,
       measurementStartMonotonicMs: this.startedAt + this.warmupMs,
       measurementEndMonotonicMs: this.startedAt + this.warmupMs + this.durationMs,
       warmupMs: this.warmupMs, durationMs: this.durationMs,
-      metrics, metadata: structuredClone(metadata),
+      metrics, tsm,
+      metadata: structuredClone(initialRecognition === 'rules' || initialRecognition === 'mit-tsm'
+        ? { ...metadata, recognition }
+        : metadata),
       notes: 'Browser observations after warm-up; not physical motion-to-action latency. Percentiles use nearest rank over retained samples. Mean/min/max and sample counts use all accepted observations. Missing metrics mean no observations, not zero latency.',
     };
     return this.snapshot(this.result);
+  }
+
+  private closeTsmWindow(now: number): void {
+    if (this.startedAt === null || this.tsmListeningSince === null) return;
+    const start = this.startedAt + this.warmupMs;
+    const clipped = Math.min(now, start + this.durationMs) - Math.max(this.tsmListeningSince, start);
+    if (clipped > 0) {
+      this.tsm.listeningMs += clipped;
+      this.tsm.listeningWindows++;
+    }
+    this.tsmListeningSince = null;
   }
 
   private observe(now: number): boolean {

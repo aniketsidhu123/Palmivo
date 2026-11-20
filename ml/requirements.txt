@@ -1,0 +1,4 @@
+# Install torch==2.7.1+cpu separately from the PyTorch CPU wheel index.
+numpy==2.2.6
+onnx==1.18.0
+onnxruntime==1.22.0

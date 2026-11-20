@@ -21,7 +21,7 @@ export class PresentationCoordinator {
     const draft = state.draft;
     // Scalar preview values deliberately do not participate in this structural key.
     const key = [state.scene, state.scene.revision, draft, state.selectedId, state.busy, state.paused, state.message,
-      draft?.kind === 'subtract' ? draft.cutterId : null, initialized];
+      draft?.kind === 'subtract' ? draft.cutterId : draft?.kind === 'union' ? draft.otherId : null, initialized];
     const structural = key.length !== this.key.length || key.some((value, index) => value !== this.key[index]);
     this.key = key;
     if (structural) {

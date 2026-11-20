@@ -1,4 +1,4 @@
-import type { TrackingFrame } from '../shared/types';
+import type { LandmarkFrame } from '../learned/features';
 
 export interface CameraInfo {
   settings: { width?: number; height?: number; frameRate?: number; facingMode?: string };
@@ -16,7 +16,14 @@ export interface TrackingStatus {
   droppedFrames: number;
   cameraInfo: CameraInfo | null;
 }
-export interface TrackingOptions { onFrame(frame: TrackingFrame): void; onStatus(status: TrackingStatus): void; onTiming?(timing: TrackingTiming): void }
+export interface TrackingOptions {
+  onFrame(frame: LandmarkFrame): void;
+  onStatus(status: TrackingStatus): void;
+  onTiming?(timing: TrackingTiming): void;
+  onCameraFrame?(timestamp: number, mediaTimeSeconds: number): void;
+  onDroppedFrame?(): void;
+  onPoseStatus?(message: string): void;
+}
 
 /** Keeps a single bitmap in flight. start/stop invalidates every older asynchronous operation. */
 export class TrackingClient {
@@ -91,8 +98,9 @@ export class TrackingClient {
               const receivedAt = performance.now();
               this.options.onTiming?.({ captureMs: timing.captureMs, roundTripMs: Math.max(0, receivedAt - timing.postedAt), sampleAgeMs: Math.max(0, receivedAt - timing.observedAt) });
             }
-            this.options.onFrame(data.frame as TrackingFrame);
+            this.options.onFrame(data.frame as LandmarkFrame);
             this.pump(generation);
+          } else if (data.type === 'pose-status') { this.options.onPoseStatus?.(String(data.message));
           } else if (data.type === 'skipped') { this.clearPending(); this.pump(generation); }
           else if (data.type === 'error') {
             this.clearPending();
@@ -132,6 +140,10 @@ export class TrackingClient {
     this.report('stopped', 'Camera is off. Mouse and keyboard controls remain available.');
   }
 
+  setPoseEnabled(enabled: boolean): void {
+    if (this.active) this.worker?.postMessage({ type: 'pose', enabled });
+  }
+
   private schedule(generation: number): void {
     const video = this.video;
     if (!this.active || !video || generation !== this.generation) return;
@@ -151,7 +163,7 @@ export class TrackingClient {
   private submit(generation: number, now: number, mediaTime: number): void {
     const video = this.video;
     if (!video || !this.active || generation !== this.generation || mediaTime === this.lastMediaTime) return;
-    this.lastMediaTime = mediaTime; this.cameraCount++;
+    this.lastMediaTime = mediaTime; this.cameraCount++; this.options.onCameraFrame?.(now, mediaTime);
     if (now - this.reportTime >= 1000) {
       const seconds = (now - this.reportTime) / 1000;
       this.stats.cameraFps = this.cameraCount / seconds;
@@ -159,7 +171,7 @@ export class TrackingClient {
       this.cameraCount = 0; this.processedCount = 0; this.reportTime = now;
       this.report('running', 'Two-hand tracking active.');
     }
-    if (this.latestFrame) this.stats.droppedFrames++;
+    if (this.latestFrame) { this.stats.droppedFrames++; this.options.onDroppedFrame?.(); }
     this.latestFrame = { now, mediaTime };
     this.pump(generation);
   }

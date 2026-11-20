@@ -2,7 +2,7 @@ import './ui/style.css';
 import { Controller } from './core/controller';
 import { GeometryClient } from './geometry/GeometryClient';
 import { TrackingClient } from './tracking/client';
-import { GestureRecognizer, DEFAULT_PROFILE, sanitizeProfile } from './tracking/gestures';
+import { GestureRecognizer, DEFAULT_PROFILE, pinchRatio, sanitizeProfile } from './tracking/gestures';
 import { CalibrationSession } from './tracking/calibration';
 import { TargetActivation } from './tracking/activation';
 import { ScaleSession } from './tracking/manipulation';
@@ -15,6 +15,9 @@ import { exportSolidSTL } from './core/stlExport';
 import { applyTransformStep } from './core/transformSteps';
 import { PerformanceBenchmark, type BenchmarkResult } from './core/benchmark';
 import { createPerformancePanel } from './ui/performancePanel';
+import { FeatureEncoder } from './learned/features';
+import { mountLearnedTools } from './learned/tools';
+import { mountTsmTools } from './tsm/tools';
 import { createUI } from './ui/workspace';
 import { CADViewport } from './ui/viewport';
 import { loadProject, saveProject } from './storage';
@@ -30,18 +33,19 @@ const measurements = new Measurements();
 const benchmark = new PerformanceBenchmark();
 let benchmarkResult: BenchmarkResult | null = null;
 let benchmarkContext: Record<string, unknown> = {};
+let benchmarkRunActive = false;
 const performanceUI = createPerformancePanel(document.querySelector('.runtime-panel')!);
 const measure = (name: string, value: number) => { measurements.add(name, value); benchmark.add(name, value, performance.now()); };
 function interruptBenchmark(reason: string) {
   if (!['warmup', 'recording'].includes(benchmark.status(performance.now()).phase)) return;
-  benchmark.reset(); benchmarkResult = null;
+  benchmark.reset(); benchmarkResult = null; benchmarkRunActive = false;
   ui.setStatus('Benchmark interrupted: ' + reason + '. Start a fresh complete sample.');
 }
 const geometry = new GeometryClient();
 const controller = new Controller({ build: async recipe => {
   const start = performance.now();
   try { return await geometry.build(recipe); }
-  finally { measure(recipe.kind === 'subtract' ? 'boolean_ms' : 'primitive_ms', performance.now() - start); }
+  finally { measure(recipe.kind === 'subtract' || recipe.kind === 'union' ? 'boolean_ms' : 'primitive_ms', performance.now() - start); }
 } });
 const viewport = new CADViewport(ui.viewportHost);
 let renderCount = 0, renderReportAt = performance.now(), renderFPS = 0;
@@ -87,6 +91,9 @@ let clickCursorLock: { x: number; y: number } | null = null;
 let handFeedback = 'Camera off';
 let testClickCount = 0;
 let lastFrameAt = 0;
+let lastTsmPointerAt = -Infinity;
+let tsmHandVisible = false;
+let tsmListeningAt = -Infinity;
 let cameraRunning = false;
 let calibration: { stage: number; cyclesAtStart: number; started: number; session: CalibrationSession } | null = null;
 let lastGesture: GestureOutput | null = null;
@@ -124,6 +131,7 @@ async function runTool(tool: Tool, source: 'pointer' | 'gesture-rules' | 'keyboa
   if (projectOpening || projectPicking) return;
   if (!initialized) { ui.setStatus('Preparing local engines and restoring the saved scene. Please wait.'); return; }
   if (calibration && source === 'gesture-rules') return;
+  tsm.stop('Palette action selected. Use Listen for tool to rearm.');
   const beforeDraft = controller.state.draft;
   const beforeHistory = controller.state.historyCount;
   moving = null; movePhase = 'ready';
@@ -138,6 +146,7 @@ async function runTool(tool: Tool, source: 'pointer' | 'gesture-rules' | 'keyboa
   if (tool === 'move') controller.beginMove();
   if (tool === 'scale') controller.beginScale();
   if (tool === 'subtract') controller.beginSubtract();
+  if (tool === 'union') controller.beginUnion();
   if (tool === 'undo') controller.undo();
   if (tool === 'commit') {
     const start = performance.now(); const committed = await controller.commit(source); measure('command_completion_ms', performance.now() - start);
@@ -145,7 +154,7 @@ async function runTool(tool: Tool, source: 'pointer' | 'gesture-rules' | 'keyboa
   }
   const draft = controller.state.draft;
   if (draft && draft !== beforeDraft) {
-    const message = draft.kind === 'create' ? `${draft.solid.name} ready. Choose Commit to create it.` : tuning.mode === 'one-hand' && (draft.kind === 'scale' || draft.kind === 'move') ? 'Hold over the precise adjustment buttons. Commit applies the preview; Cancel restores it.' : draft.kind === 'scale' ? 'Scale ready. Pinch both hands, then change their separation.' : draft.kind === 'move' ? 'Move ready. Pinch and drag the selected solid.' : 'Target chosen. Select a different solid as the cutter.';
+    const message = draft.kind === 'create' ? `${draft.solid.name} ready. Choose Commit to create it.` : tuning.mode === 'one-hand' && (draft.kind === 'scale' || draft.kind === 'move') ? 'Hold over the precise adjustment buttons. Commit applies the preview; Cancel restores it.' : draft.kind === 'scale' ? 'Scale ready. Pinch both hands, then change their separation.' : draft.kind === 'move' ? 'Move ready. Pinch and drag the selected solid.' : draft.kind === 'union' ? 'First solid chosen. Select a second solid to join.' : 'Target chosen. Select a different solid as the cutter.';
     ui.confirmAction(message, button);
   }
   if (tool === 'undo' && controller.state.historyCount < beforeHistory) ui.confirmAction('Undo restored the previous scene.', button);
@@ -157,10 +166,14 @@ for (const [tool, button] of ui.paletteButtons) button.addEventListener('click',
 function selectSolid(id: string, button: HTMLButtonElement | null = null) {
   if (projectOpening || projectPicking || controller.state.busy || controller.state.paused) return;
   const solid = controller.state.scene.solids.find(item => item.id === id); if (!solid) return;
+  tsm.stop('Solid selected. Use Listen for tool to rearm.');
   if (controller.state.draft?.kind === 'subtract') {
     const previousCutter = controller.state.draft.cutterId;
     controller.chooseCutter(id);
     if (controller.state.draft?.kind === 'subtract' && controller.state.draft.cutterId === id) ui.confirmAction(previousCutter === id ? `${solid.name} is already the cutter. Choose Commit.` : `Cutter selected: ${solid.name}. Choose Commit to subtract.`, button);
+  } else if (controller.state.draft?.kind === 'union') {
+    controller.chooseUnionOperand(id);
+    if (controller.state.draft?.kind === 'union' && controller.state.draft.otherId === id) ui.confirmAction(`Second solid selected: ${solid.name}. Choose Commit to join.`, button);
   } else if (!controller.state.draft) { controller.select(id); ui.confirmAction(`${solid.name} selected.`, button); }
 }
 document.querySelector('#app')!.addEventListener('click', event => {
@@ -233,7 +246,7 @@ document.addEventListener('keydown', event => {
   // Focused controls keep their native keyboard action; shortcuts apply to the workspace.
   if ((event.key === 'Enter' || event.key === ' ') && (event.target as HTMLElement).closest('button')) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); void runTool('undo', 'keyboard'); return; }
-  const keys: Record<string, Tool> = { b: 'box', c: 'cylinder', v: 'select', m: 'move', s: 'scale', d: 'subtract', Escape: 'cancel', Enter: 'commit', ' ': 'pause' };
+  const keys: Record<string, Tool> = { b: 'box', c: 'cylinder', v: 'select', m: 'move', s: 'scale', d: 'subtract', u: 'union', Escape: 'cancel', Enter: 'commit', ' ': 'pause' };
   const tool = keys[event.key]; if (tool) { event.preventDefault(); void runTool(tool, 'keyboard'); }
   if (controller.state.draft?.kind === 'scale' && ['+', '=', '-'].includes(event.key)) { event.preventDefault(); manualScale(controller.state.draft.uniformScale + (event.key === '-' ? -.1 : .1)); }
 });
@@ -255,6 +268,9 @@ function resetActivation() {
   highlightedButton?.classList.remove('gesture-hover'); highlightedButton = null;
 }
 function buttonId(button: HTMLButtonElement): string | null {
+  if (button === tsm.button) return 'tsm:listen';
+  if (button === learned.listenButton) return 'learned:listen';
+  if (button === learned.stopButton) return 'learned:stop';
   if (button.dataset.transformStep) return 'adjust:' + button.dataset.transformStep;
   if (button === ui.testGestureButton) return 'test:click';
   if (button === ui.stlExportButton) return 'export:stl';
@@ -267,6 +283,9 @@ function resolveButton(id: string | null): HTMLButtonElement | null {
   if (id.startsWith('adjust:')) return ui.transformStepButtons.get(id.slice(7)) || null;
   if (id === 'test:click') return ui.testGestureButton;
   if (id === 'export:stl') return ui.stlExportButton;
+  if (id === 'tsm:listen') return tsm.button;
+  if (id === 'learned:listen') return learned.listenButton;
+  if (id === 'learned:stop') return learned.stopButton;
   if (id.startsWith('preset:')) return ui.sizePresetButtons.get(id.slice(7)) || null;
   if (id.startsWith('tool:')) return ui.paletteButtons.get(id.slice(5) as Tool) || null;
   return [...document.querySelectorAll<HTMLButtonElement>('[data-solid-id]')].find(button => button.dataset.solidId === id.slice(6)) || null;
@@ -343,6 +362,7 @@ function processGesture(output: GestureOutput) {
     const button = resolveButton(activation.activate);
     if (!eligible(button)) return;
     if (button === ui.testGestureButton) testClick('gesture');
+    else if (button === tsm.button || button === learned.listenButton || button === learned.stopButton) button.click();
     else if (button.dataset.transformStep) adjustPreview(button.dataset.transformStep, 'gesture-rules');
     else if (button === ui.stlExportButton) exportSelectedSTL('gesture-rules');
     else if (activation.activate.startsWith('tool:')) void runTool(activation.activate.slice(5) as Tool, 'gesture-rules');
@@ -387,6 +407,7 @@ function beginCalibration() {
   if (projectOpening || projectPicking) return;
   if (!cameraRunning) { ui.setStatus('Enable the camera before calibration.'); return; }
   interruptBenchmark('mapping changed');
+  resetLearned(true);
   controller.cancel(); recognizer.reset();
   moving = null; scaling = null; resetActivation();
   calibration = { stage: 0, cyclesAtStart: 0, started: performance.now(), session: new CalibrationSession(profile, { singleHand: tuning.mode === 'one-hand' }) };
@@ -422,7 +443,94 @@ function calibrateFrame(frame: TrackingFrame, output: GestureOutput) {
   }
 }
 
+const learnedHost = document.createElement('details');
+learnedHost.className = 'learned-tools';
+const learnedHeading = document.createElement('summary');
+learnedHeading.textContent = 'Learned gesture pilot';
+const captureLink = document.createElement('a');
+captureLink.href = './collect.html';
+captureLink.textContent = 'Open gesture capture';
+const learnedContent = document.createElement('div');
+learnedHost.append(learnedHeading, captureLink, learnedContent);
+document.querySelector('.runtime-panel')!.append(learnedHost);
+const encoder = new FeatureEncoder();
+let poseEnabled = false;
+let learnedActive = false;
+let isTsmActive = () => false;
+const learned = mountLearnedTools(learnedContent, {
+  getIdle: () => idleForShortcut() && !isTsmActive(),
+  onOpenDraft: token => {
+    if (!cameraRunning || calibration || projectOpening || projectPicking || controller.state.busy ||
+        controller.state.paused || controller.state.draft || !lastGesture?.trackingReady ||
+        performance.now() - lastFrameAt > 150 || document.visibilityState !== 'visible') return false;
+    if (token === 'Union' && (!controller.state.selectedId || controller.state.scene.solids.length < 2)) {
+      ui.setStatus('Select a first solid with a second solid in the scene before requesting Union.');
+      return false;
+    }
+    void runTool(token === 'Box' ? 'box' : token === 'Cylinder' ? 'cylinder' : 'union', 'gesture-rules');
+    return !!controller.state.draft;
+  },
+  onTiming: timing => {
+    measure('onnx_inference_ms', timing.inferenceMs);
+    measure('ctc_decoder_ms', timing.decoderMs);
+    measure('onnx_round_trip_ms', timing.roundTripMs);
+    measure('onnx_dropped_in_stream', timing.droppedFrames);
+  },
+});
+
+function idleForShortcut(): boolean {
+  return cameraRunning && initialized && !calibration && !projectOpening && !projectPicking &&
+    !controller.state.busy && !controller.state.paused && !controller.state.draft &&
+    document.visibilityState === 'visible';
+}
+
+function unionShortcutAvailable(): boolean {
+  return !!controller.state.selectedId && controller.state.scene.solids.length >= 2;
+}
+
+const tsm = mountTsmTools(
+  document.querySelector<HTMLElement>('.stage-options')!,
+  document.querySelector<HTMLElement>('.runtime-panel')!,
+  {
+    canListen: () => idleForShortcut() && learned.mode() === 'rules',
+    canAccept: () => idleForShortcut() && tsmHandVisible && performance.now() - lastTsmPointerAt <= 175,
+    unionAvailable: unionShortcutAvailable,
+    onModeChange: mode => {
+      const now = performance.now();
+      if (mode === 'listening') tsmListeningAt = now;
+      if (benchmarkRunActive) benchmark.setTsmListening(mode === 'listening', now);
+    },
+    onOpenDraft: tool => {
+      if (tool === 'union' && !unionShortcutAvailable()) return false;
+      void runTool(tool, 'gesture-rules');
+      return !!controller.state.draft;
+    },
+    onTiming: timing => {
+      measure('tsm_capture_ms', timing.captureMs);
+      measure('tsm_preprocess_ms', timing.preprocessMs);
+      measure('tsm_inference_ms', timing.inferenceMs);
+      measure('tsm_round_trip_ms', timing.roundTripMs);
+      measure('tsm_decision_ms', timing.decisionMs);
+    },
+  },
+);
+isTsmActive = () => tsm.mode() !== 'rules';
+controller.subscribe(() => tsm.refresh());
+const recognitionMode = () => tsm.mode() === 'listening' ? 'mit-tsm' : learned.mode();
+
+function resetLearned(stop = false) {
+  if (stop) { learned.stop(); tsm.stop(); }
+  else learned.reset();
+  encoder.reset();
+}
+
 const tracking = new TrackingClient({
+  onCameraFrame: (timestamp, mediaTimeSeconds) => {
+    if (benchmarkRunActive) benchmark.add('camera_delivered_frame', 1, performance.now());
+    tsm.sample(ui.video, timestamp, mediaTimeSeconds);
+  },
+  onDroppedFrame: () => { if (benchmarkRunActive) benchmark.add('tracking_dropped_frame', 1, performance.now()); },
+  onPoseStatus: message => ui.setStatus(message),
   onTiming: timing => {
     measure('frame_capture_ms', timing.captureMs);
     measure('tracking_round_trip_ms', timing.roundTripMs);
@@ -432,7 +540,12 @@ const tracking = new TrackingClient({
     ui.setTracking(status.message);
     performanceUI.camera(status.cameraInfo, status);
     if (status.state === 'running' && status.cameraFps > 0) { measure('camera_fps', status.cameraFps); measure('tracking_fps', status.trackingFps); }
-    if ((status.state === 'stopped' || status.state === 'error') && ['warmup', 'recording'].includes(benchmark.status(performance.now()).phase)) { benchmark.reset(); ui.setStatus('Benchmark interrupted by camera stop. Run a fresh complete sample.'); }
+    if (status.state === 'stopped' || status.state === 'error') interruptBenchmark('the camera stopped');
+    if (status.state === 'stopped' || status.state === 'error') {
+      tsmHandVisible = false;
+      lastTsmPointerAt = -Infinity;
+      resetLearned(true); learnedActive = false; poseEnabled = false;
+    }
     if (status.state === 'error') {
       cameraRunning = false; calibration = null; useMappingButton.hidden = true; moving = null; scaling = null; resetActivation();
       ui.clearManipulationFeedback();
@@ -445,6 +558,15 @@ const tracking = new TrackingClient({
     handFeedback = frame.hands.length ? frame.hands.map(hand => `${hand.handedness} ${Math.round(hand.score * 100)}%`).join(' · ') : 'No hands detected';
     lastFrameAt = performance.now(); drawHands(frame); measure('landmark_ms', frame.inferenceMs); measure('hands_detected', frame.hands.length); measure('hands_present', frame.hands.length > 0 ? 1 : 0);
     const start = performance.now(); const output = recognizer.process(frame);
+    const pointerPresent = frame.hands.some(hand => hand.handedness === profile.dominantHand && hand.landmarks.length >= 21);
+    if (tsm.mode() !== 'rules') {
+      const visible = frame.hands.filter(hand => Number.isFinite(pinchRatio(hand, frame.width, frame.height)));
+      tsmHandVisible = visible.length > 0;
+      if (visible.some(hand => hand.handedness === profile.dominantHand)) lastTsmPointerAt = lastFrameAt;
+      if (tsm.mode() === 'listening' && lastFrameAt - Math.max(lastTsmPointerAt, tsmListeningAt) > TRACKING_GAP_MS) {
+        tsm.stop('Pointer hand lost. Bring it back into view and choose Listen for tool again.');
+      }
+    }
     const wasCalibrating = calibration !== null;
     calibrateFrame(frame, output);
     // Completing calibration changes the coordinate map and resets recognition: do not execute
@@ -454,6 +576,19 @@ const tracking = new TrackingClient({
     measure('rules_to_draft_ms', performance.now() - start);
     measure('video_to_handler_ms', performance.now() - frame.timestamp);
     measure('gesture_ready', output.trackingReady ? 1 : 0);
+    if (frame.poseMs !== undefined) measure('pose_ms', frame.poseMs);
+    const active = learned.active();
+    if (active !== learnedActive) { encoder.reset(); learnedActive = active; }
+    const wantsPose = active && learned.featureSet() === 'hands+shoulders';
+    if (wantsPose !== poseEnabled) { tracking.setPoseEnabled(wantsPose); poseEnabled = wantsPose; }
+    if (active && !calibration && !projectPicking && !projectOpening && !controller.state.paused) {
+      if (pointerPresent && !output.trackingLost) {
+        const featureStart = performance.now();
+        const features = encoder.encode(frame, profile.dominantHand);
+        measure('learned_features_ms', performance.now() - featureStart);
+        learned.push(frame.timestamp, features);
+      } else resetLearned();
+    }
   },
 });
 ui.cameraButton.addEventListener('click', async () => {
@@ -468,6 +603,7 @@ ui.dominantHandSelect.addEventListener('change', () => { profile = { ...profile,
 function changeTuning() {
   if (controller.state.busy || projectOpening || projectPicking) { ui.tuningSensitivity.value = tuning.sensitivity; ui.tuningActivation.value = tuning.mode; ui.tuningHover.value = String(tuning.hoverMs); ui.setStatus('Wait for the current operation before changing input settings.'); return; }
   interruptBenchmark('input settings changed');
+  resetLearned(true);
   const mode: InputMode = ui.tuningActivation.value === 'one-hand' ? 'one-hand' : ui.tuningActivation.value === 'dwell' ? 'dwell' : 'pinch';
   if (mode !== tuning.mode && controller.state.draft) {
     controller.cancel(); ui.setSelectedTool(null); ui.clearManipulationFeedback();
@@ -567,19 +703,32 @@ recordButton.addEventListener('click', async () => {
     else { const blob = await recording.stop(); recording = null; recordButton.textContent = 'Record demo'; const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'Palmivo-demo.webm'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); ui.setStatus('Demo recording downloaded.'); }
   } catch (error) { ui.setStatus(error instanceof Error ? error.message : 'Recording failed.'); }
 });
-ui.metricsExportButton.addEventListener('click', () => downloadJSON('Palmivo-measurements.json', { capturedAt: new Date().toISOString(), backend: tracking.backend, camera: tracking.stats, cameraInfo: tracking.cameraInfo, inputMode: tuning.mode, recognition: 'MediaPipe + temporal gesture rules', notes: 'Rolling browser timings; not physical motion-to-action latency. A completed fixed-window benchmark is exported separately.', metrics: measurements.summary(), benchmark: benchmarkResult, presentation: presentation.diagnostics, viewport: viewport.diagnostics }));
+ui.metricsExportButton.addEventListener('click', () => {
+  const metrics = measurements.summary();
+  downloadJSON('Palmivo-measurements.json', {
+    capturedAt: new Date().toISOString(), backend: tracking.backend, camera: tracking.stats,
+    cameraInfo: tracking.cameraInfo, inputMode: tuning.mode, recognition: recognitionMode(),
+    tsmTimedPredictions: metrics.tsm_inference_ms?.samples ?? 0,
+    notes: 'Rolling browser stage timings. Recognition is the mode at export. TSM timings include prior listening sessions on this page. The fixed-window benchmark has its own listening duration and sample counts.',
+    metrics, benchmark: benchmarkResult, presentation: presentation.diagnostics, viewport: viewport.diagnostics,
+  });
+});
 performanceUI.runButton.addEventListener('click', () => {
   if (!cameraRunning || !tracking.active) return;
-  benchmarkResult = null; benchmark.start(performance.now());
-  benchmarkContext = structuredClone({ startedAt: new Date().toISOString(), backend: tracking.backend, cameraInfo: tracking.cameraInfo, inputMode: tuning.mode, pointerHand: profile.dominantHand });
-  performanceUI.status(benchmark.status(performance.now()), null, true);
-  ui.setStatus('Benchmark started: 3 s warm-up, then 20 s measured input. Show hands and use the actual scene.');
+  const now = performance.now();
+  benchmarkResult = null;
+  benchmark.start(now);
+  benchmarkRunActive = true;
+  benchmark.setTsmListening(tsm.mode() === 'listening', now);
+  benchmarkContext = structuredClone({ startedAt: new Date().toISOString(), backend: tracking.backend, cameraInfo: tracking.cameraInfo, inputMode: tuning.mode, pointerHand: profile.dominantHand, recognition: recognitionMode(), features: learned.featureSet() });
+  performanceUI.status(benchmark.status(now), null, true);
+  ui.setStatus('Benchmark started: 3 s warm-up, then 20 s measured input. You can use Listen for tool during the sample.');
 });
 performanceUI.exportButton.addEventListener('click', () => {
   if (benchmarkResult) downloadJSON('Palmivo-benchmark.json', benchmarkResult);
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') interruptBenchmark('the benchmark tab was backgrounded');
+  if (document.visibilityState === 'hidden') { interruptBenchmark('the benchmark tab was backgrounded'); resetLearned(true); }
 });
 let resetArmedUntil = 0;
 ui.resetButton.addEventListener('click', () => {
@@ -589,17 +738,37 @@ ui.resetButton.addEventListener('click', () => {
 });
 
 setInterval(() => {
-  if (cameraRunning && performance.now() - lastFrameAt > 150) handleGesture(recognizer.missing(performance.now()));
+  learned.refresh();
+  tsm.refresh();
+  if (cameraRunning && performance.now() - lastFrameAt > 150) {
+    if (learned.active()) resetLearned();
+    tsm.stop('Camera frames stopped. Use the gesture palette or try again.');
+    handleGesture(recognizer.missing(performance.now()));
+  }
 }, 100);
 setInterval(() => {
   const metrics = measurements.summary();
   const value = (key: string) => metrics[key] ? `${metrics[key].p95.toFixed(1)} ms` : '—';
   ui.setMetrics({ render: renderFPS ? `${Math.round(renderFPS)} fps` : '—', camera: `${tracking.stats.cameraFps.toFixed(0)} fps`, tracking: `${tracking.stats.trackingFps.toFixed(0)} fps`, landmark: value('landmark_ms'), compiler: value('rules_to_draft_ms'), geometry: value('boolean_ms'), dropped: String(tracking.stats.droppedFrames), backend: tracking.backend });
   const now = performance.now();
+  const initialRecognition = benchmarkContext.recognition;
+  const currentRecognition = recognitionMode();
+  const paletteOrTsm = (mode: unknown) => mode === 'rules' || mode === 'mit-tsm';
+  if (benchmarkRunActive && initialRecognition !== currentRecognition &&
+      !(paletteOrTsm(initialRecognition) && paletteOrTsm(currentRecognition))) {
+    interruptBenchmark('the custom recognition mode changed');
+  }
   const status = benchmark.status(now);
   if (status.phase === 'warmup' || status.phase === 'recording') benchmark.add('document_visible', document.visibilityState === 'visible' ? 1 : 0, now);
   if (status.phase === 'complete' && !benchmarkResult) {
-    benchmarkResult = benchmark.finish(now, { ...benchmarkContext, capturedAt: new Date().toISOString(), recognition: 'MediaPipe + temporal gesture rules', pipeline: 'One tracking bitmap in flight; latest pending metadata only; CAD render budget 60 FPS', units: { rates: 'frames/second', timing: 'milliseconds' }, rateDefinition: 'Tracking and rendering average FPS use actual completed observations divided by the fixed 20-second window. Camera FPS contains reported one-second rate samples, which may straddle window boundaries.', timingDefinition: 'Video callback-to-handler ends after main-thread preview handling; excludes physical motion, exposure, gesture dwell, display scanout, and Boolean completion. Boolean and command-completion samples, if present, are separate.' });
+    benchmarkRunActive = false;
+    benchmarkResult = benchmark.finish(now, {
+      ...benchmarkContext, capturedAt: new Date().toISOString(),
+      pipeline: 'One tracking bitmap in flight; latest pending metadata only; CAD render budget 60 FPS',
+      units: { rates: 'frames/second', timing: 'milliseconds' },
+      rateDefinition: 'Delivered camera frames, tracking results, and render observations are counted inside the fixed window. TSM frame counters count observations arriving while TSM is listening. Tracking dropped-frame count records replaced pending metadata.',
+      timingDefinition: 'Video callback-to-handler ends after main-thread preview handling. TSM listening duration excludes model loading. TSM timing percentiles cover predictions delivered during the window. Exposure, display, intent dwell, and Boolean completion are measured separately.',
+    });
   }
   performanceUI.status(status, benchmarkResult, cameraRunning);
 }, 500);
@@ -609,6 +778,7 @@ async function initialize() {
     const response = await fetch('/asset-manifest.json'); if (!response.ok) throw Error('Asset manifest missing');
     const manifest = await response.json() as { files: { path: string; bytes: number; sha256: string }[] };
     for (const item of manifest.files) {
+      if (!item.path.startsWith('/tracking/') || item.path.endsWith('/pose_landmarker_lite.task')) continue;
       const file = await fetch(item.path); if (!file.ok) throw Error(`${item.path} missing`);
       const bytes = await file.arrayBuffer();
       const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
@@ -626,4 +796,4 @@ async function initialize() {
   if (controller.state.scene.solids.length) viewport.fit();
 }
 void initialize();
-window.addEventListener('beforeunload', () => { tracking.stop(); geometry.dispose(); viewport.dispose(); presentation.dispose(); });
+window.addEventListener('beforeunload', () => { tracking.stop(); tsm.dispose(); learned.dispose(); geometry.dispose(); viewport.dispose(); presentation.dispose(); });

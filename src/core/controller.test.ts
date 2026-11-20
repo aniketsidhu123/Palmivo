@@ -26,6 +26,25 @@ describe('scene compiler and transaction controller',()=>{
     expect(await controller.commit()).toBe(false); controller.chooseCutter(box); expect(controller.state.draft).toMatchObject({cutterId:null});
     expect(controller.state.scene.solids).toHaveLength(2);
   });
+  it('requires distinct Union operands and leaves them intact on geometry failure', async () => {
+    const geometry = adapter();
+    const controller = new Controller(geometry);
+    const first = await add(controller);
+    const second = await add(controller, 'Cylinder');
+    controller.select(first);
+    const before = controller.exportDocument();
+    const meshes = [...controller.meshes];
+    controller.beginUnion(); controller.chooseUnionOperand(first);
+    expect(controller.getDraftAST()).toBeNull();
+    expect(await controller.commit()).toBe(false);
+    controller.chooseUnionOperand(second);
+    vi.mocked(geometry.build).mockRejectedValueOnce(new Error('Union failed'));
+    expect(await controller.commit()).toBe(false);
+    expect(controller.getDraftAST()).toMatchObject({ type: 'Union', targetId: first, otherId: second });
+    expect(controller.exportDocument()).toEqual(before);
+    expect([...controller.meshes]).toEqual(meshes);
+    expect(controller.state.busy).toBe(false);
+  });
   it('captures transformed source operands and exactly restores them on undo',async()=>{
     const controller=new Controller(adapter()); const box=await add(controller); controller.beginScale(); controller.updateScale(1.4); await controller.commit();
     const cylinder=await add(controller,'Cylinder'); controller.beginMove(); controller.updateMove([2,0,0]); await controller.commit();
@@ -64,7 +83,7 @@ describe('scene compiler and transaction controller',()=>{
     const first=new Controller(adapter()); await add(first); const saved=first.exportDocument(); const next=new Controller(adapter()); expect(await next.restore(saved)).toBe(true); expect(next.exportDocument()).toEqual(saved); expect(next.meshes.size).toBe(1);
   });
   it('rejects unsupported saved projects without replacing the scene',async()=>{
-    const controller=new Controller(adapter()); await add(controller); const original=controller.exportDocument(); const invalid=controller.exportDocument(); invalid.schemaVersion=2 as 1;
+    const controller=new Controller(adapter()); await add(controller); const original=controller.exportDocument(); const invalid=controller.exportDocument(); invalid.schemaVersion=3 as never;
     expect(await controller.restore(invalid)).toBe(false); expect(controller.exportDocument()).toEqual(original);
   });
   it('does not publish repeated Move samples within the same snapped cell', async () => {

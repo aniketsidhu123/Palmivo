@@ -31,8 +31,23 @@ describe('reopening exported projects', () => {
     expect(reopened.solids[0].recipe).toMatchObject({ kind: 'subtract', target: { scale: 1.4 }, cutter: { recipe: { kind: 'cylinder', radius: 5, height: 60 } } });
     expect(reopened.commands.at(-1)?.ast).toEqual({ type: 'Subtract', targetId: 'example-box', cutterId: 'example-cylinder', resultId: 'example-through-hole' });
   });
+  it('reads Union recipes and commands only in version 2', () => {
+    const target = box('first'), other = box('second');
+    const saved = project();
+    saved.schemaVersion = 2;
+    saved.solids = [{ ...box('result'), recipe: { kind: 'union', target, other } }];
+    saved.commands[0].ast = { type: 'Union', targetId: target.id, otherId: other.id, resultId: 'result' };
+    expect(parse(saved)).toEqual(saved);
+    expect(() => parse({ ...saved, schemaVersion: 1 })).toThrow(/Union recipes require.*version 2/);
+    expect(() => parse({ ...saved, schemaVersion: 1, solids: [] })).toThrow(/Union commands require.*version 2/);
+    other.id = target.id;
+    expect(() => parse(saved)).toThrow(/different solids/);
+    other.id = 'second';
+    saved.commands[0].ast.resultId = target.id;
+    expect(() => parse(saved)).toThrow(/result ID/);
+  });
 
-  it.each(['', '{"schemaVersion":', 'null', '[]', '{"schemaVersion":2,"units":"mm"}'])('rejects malformed or unsupported project %j', text => {
+  it.each(['', '{"schemaVersion":', 'null', '[]', '{"schemaVersion":3,"units":"mm"}'])('rejects malformed or unsupported project %j', text => {
     expect(() => parseProjectFile(text)).toThrow(/JSON|format/);
   });
 
@@ -42,7 +57,7 @@ describe('reopening exported projects', () => {
   });
 
   it.each([
-    (doc: SceneDocument) => { doc.schemaVersion = 2 as 1; },
+    (doc: SceneDocument) => { doc.schemaVersion = 3 as never; },
     (doc: SceneDocument) => { doc.units = 'inch' as 'mm'; },
     (doc: SceneDocument) => { doc.revision = -1; },
     (doc: SceneDocument) => { doc.revision = 1.5; },

@@ -1,11 +1,18 @@
 import { cp, mkdir, readdir, writeFile, readFile, unlink, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyTsmAssets } from './tsm-assets.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
-const excludedFolders = ['.git', '.agents', '.codex', 'node_modules', '.pnpm-store', '__pycache__', '.pytest_cache'];
+const excludedFolders = ['.git', '.agents', '.codex', 'node_modules', '.pnpm-store', '__pycache__', '.pytest_cache', '.venv'];
 const treeOptions = { recursive: true, filter: source => !/\.(log|pyc|pyo|tmp|temp)$/i.test(source) && !path.relative(root, source).split(path.sep).some(part => excludedFolders.includes(part.toLowerCase())) };
-const out = path.join(root, 'release/Palmivo');
-const source = path.join(root, 'release/Palmivo-Source');
+const candidate = process.argv.includes('--candidate');
+if (candidate) {
+  await verifyTsmAssets(path.join(root, 'dist'), true);
+  await verifyTsmAssets(path.join(root, 'public'), true);
+}
+const releaseName = candidate ? 'Palmivo-Hybrid' : 'Palmivo';
+const out = path.join(root, 'release', releaseName);
+const source = path.join(root, 'release', `${releaseName}-Source`);
 const productionRoot = path.resolve(out, 'dist');
 const managedRoots = [productionRoot, path.resolve(out, 'docs'), path.resolve(source, 'docs'), path.resolve(source, 'qa')];
 function checkManagedPath(target) {
@@ -37,6 +44,11 @@ await cp(path.join(root, 'dist'), path.join(out, 'dist'), treeOptions);
 await prunePackagedTree(path.join(root, 'dist'), productionRoot);
 await cp(path.join(root, 'scripts/serve.mjs'), path.join(out, 'scripts/serve.mjs'));
 await cp(path.join(root, 'start-demo.cmd'), path.join(out, 'start-demo.cmd'));
+if (candidate) {
+  const launcher = await readFile(path.join(root, 'start-demo.cmd'), 'utf8');
+  if (!launcher.includes('scripts\\serve.mjs --open')) throw Error('Candidate launcher cannot infer the local server command.');
+  await writeFile(path.join(out, 'start-demo.cmd'), launcher.replaceAll('scripts\\serve.mjs --open', 'scripts\\serve.mjs --open --candidate'));
+}
 for (const file of ['README.md', 'THIRD_PARTY_NOTICES.md']) await cp(path.join(root, file), path.join(out, file));
 await cp(path.join(root, 'docs'), path.join(out, 'docs'), treeOptions);
 await prunePackagedTree(path.join(root, 'docs'), path.join(out, 'docs'));
@@ -54,7 +66,16 @@ console.log(`Portable offline release created at ${out}`);
 await mkdir(source, { recursive: true });
 for (const folder of ['src', 'scripts', 'public', 'docs', 'examples', 'qa']) await cp(path.join(root, folder), path.join(source, folder), treeOptions);
 for (const folder of ['docs', 'qa']) await prunePackagedTree(path.join(root, folder), path.join(source, folder));
-for (const file of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.json', 'vite.config.ts', 'vitest.config.ts', 'index.html', '.npmrc', '.gitignore', 'README.md', 'THIRD_PARTY_NOTICES.md', 'start-demo.cmd']) await cp(path.join(root, file), path.join(source, file));
+const mlRoot = path.join(root, 'ml');
+if (candidate) {
+  await mkdir(path.join(source, 'ml'), { recursive: true });
+  for (const entry of await readdir(mlRoot, { withFileTypes: true })) {
+    if (entry.isFile() && (entry.name === '.gitignore' || /\.(py|md|txt)$/.test(entry.name))) {
+      await cp(path.join(mlRoot, entry.name), path.join(source, 'ml', entry.name));
+    }
+  }
+}
+for (const file of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.json', 'vite.config.ts', 'vitest.config.ts', 'index.html', 'collect.html', '.npmrc', '.gitignore', 'README.md', 'THIRD_PARTY_NOTICES.md', 'start-demo.cmd']) await cp(path.join(root, file), path.join(source, file));
 // Include the current editable deck when present, without older presentation drafts.
 const currentPresentation = path.join(root, 'submission/presentation');
 try {

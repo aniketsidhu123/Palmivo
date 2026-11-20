@@ -1,10 +1,13 @@
+param([switch]$Candidate)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $releaseRoot = Join-Path $projectRoot 'release'
+$releaseName = if ($Candidate) { 'Palmivo-Hybrid' } else { 'Palmivo' }
+$checksumsName = if ($Candidate) { 'hybrid-checksums.json' } else { 'checksums.json' }
 $bundles = @(
-    @{ Folder = 'Palmivo'; Archive = 'Palmivo-Windows.zip' },
-    @{ Folder = 'Palmivo-Source'; Archive = 'Palmivo-Source.zip' }
+    @{ Folder = $releaseName; Archive = "$releaseName-Windows.zip" },
+    @{ Folder = "$releaseName-Source"; Archive = "$releaseName-Source.zip" }
 )
 foreach ($bundle in $bundles) {
     $bundleRoot = (Resolve-Path -LiteralPath (Join-Path $releaseRoot $bundle.Folder)).Path
@@ -25,5 +28,5 @@ foreach ($bundle in $bundles) {
     finally { $check.Dispose() }
     Get-Item -LiteralPath $archivePath | Select-Object Name, Length
 }
-Get-FileHash -LiteralPath (Join-Path $releaseRoot 'Palmivo-Windows.zip'), (Join-Path $releaseRoot 'Palmivo-Source.zip') -Algorithm SHA256 |
-    Select-Object Hash, Path | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot 'checksums.json')
+Get-FileHash -LiteralPath (Join-Path $releaseRoot "$releaseName-Windows.zip"), (Join-Path $releaseRoot "$releaseName-Source.zip") -Algorithm SHA256 |
+    Select-Object Hash, Path | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot $checksumsName)

@@ -3,8 +3,8 @@
   "files": [
     {
       "path": "/tracking/worker.js",
-      "bytes": 136546,
-      "sha256": "50903c0d9f7308b176fedd853d70c8746cefdc56535ea8ba8746e6701dd901fc"
+      "bytes": 137536,
+      "sha256": "7e8e2c824a2e760174a8dfb94de14e0e8efab2f96ba8c87981e9797f65a751dd"
     },
     {
       "path": "/tracking/hand_landmarker.task",
@@ -30,6 +30,31 @@
       "path": "/tracking/wasm/vision_wasm_nosimd_internal.wasm",
       "bytes": 10647962,
       "sha256": "924274fcd5ac8985f6570a8573e7971b7bd2d580ba1b8f3beb0ba8f95db6347c"
+    },
+    {
+      "path": "/tracking/pose_landmarker_lite.task",
+      "bytes": 5777746,
+      "sha256": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a"
+    },
+    {
+      "path": "/learned/wasm/ort-wasm-simd-threaded.mjs",
+      "bytes": 24274,
+      "sha256": "3101568d9c131ea89d4c693fbff3e0d0c3dcbcf1baa09fd871b86662a071bd1a"
+    },
+    {
+      "path": "/learned/wasm/ort-wasm-simd-threaded.wasm",
+      "bytes": 12297086,
+      "sha256": "fd078a39438a65660fc6c9df8d42fc886b5bf2931d6dbdd8dc51a17b1221499f"
+    },
+    {
+      "path": "/tsm/mit-tsm-jester-streaming.onnx",
+      "bytes": 9012233,
+      "sha256": "e4142cece680362eec7b5ce2571bc7b763b841830942b30c51cb9b21ccfd1ebb"
+    },
+    {
+      "path": "/tsm/manifest.json",
+      "bytes": 286,
+      "sha256": "5a984383853708841a03529215d046214f9c97a96dd87527da0baed571cf6688"
     }
   ]
 }
