@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "units": "mm",
+  "revision": 4,
+  "solids": [
+    {
+      "id": "difference-6dba7498-1f3b-4208-8526-61c36aa714e3",
+      "name": "Box 1 − Cylinder 1",
+      "color": "#b8d7b3",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1,
+      "recipe": {
+        "kind": "subtract",
+        "target": {
+          "id": "box-4633aec9-b87b-4728-bcdf-6c8b0b892984",
+          "name": "Box 1",
+          "recipe": {
+            "kind": "box",
+            "dimensions": [
+              20,
+              30,
+              40
+            ]
+          },
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "scale": 1.4000000000000004,
+          "color": "#b8d7b3"
+        },
+        "cutter": {
+          "id": "cylinder-511b2847-3342-4cd2-80f3-d02b74028110",
+          "name": "Cylinder 1",
+          "recipe": {
+            "kind": "cylinder",
+            "radius": 3,
+            "height": 60,
+            "segments": 32
+          },
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "scale": 1,
+          "color": "#e5a96d"
+        }
+      }
+    }
+  ],
+  "commands": [
+    {
+      "commandId": "cmd-7a433d91-e08b-46c4-90ae-d4335fec95cd",
+      "baseSceneRevision": 0,
+      "source": "pointer",
+      "ast": {
+        "type": "Create",
+        "objectId": "box-4633aec9-b87b-4728-bcdf-6c8b0b892984",
+        "primitive": "Box",
+        "dimensions": [
+          20,
+          30,
+          40
+        ],
+        "position": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "commandId": "cmd-b22f4e8c-36fc-4d9e-b518-3470caf4ec46",
+      "baseSceneRevision": 1,
+      "source": "pointer",
+      "ast": {
+        "type": "Scale",
+        "targetId": "box-4633aec9-b87b-4728-bcdf-6c8b0b892984",
+        "uniformScale": 1.4000000000000004
+      }
+    },
+    {
+      "commandId": "cmd-b138b803-5c75-49a5-b874-0af5378e5f03",
+      "baseSceneRevision": 2,
+      "source": "pointer",
+      "ast": {
+        "type": "Create",
+        "objectId": "cylinder-511b2847-3342-4cd2-80f3-d02b74028110",
+        "primitive": "Cylinder",
+        "dimensions": [
+          3,
+          60
+        ],
+        "position": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "commandId": "cmd-62af9db5-9f61-41b2-9c8d-79758bb057ea",
+      "baseSceneRevision": 3,
+      "source": "pointer",
+      "ast": {
+        "type": "Subtract",
+        "targetId": "box-4633aec9-b87b-4728-bcdf-6c8b0b892984",
+        "cutterId": "cylinder-511b2847-3342-4cd2-80f3-d02b74028110",
+        "resultId": "difference-6dba7498-1f3b-4208-8526-61c36aa714e3"
+      }
+    }
+  ]
+}

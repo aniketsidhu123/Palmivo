@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "node scripts/prepare-assets.mjs && tsc --noEmit && vite build && node scripts/verify-assets.mjs",
+    "build:hosted": "node scripts/prepare-assets.mjs && tsc --noEmit && vite build && node scripts/verify-assets.mjs --hosted",
     "test": "vitest run",
     "start": "node scripts/serve.mjs",
     "assets": "node scripts/prepare-assets.mjs",

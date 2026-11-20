@@ -65,6 +65,10 @@ await writeFile(path.join(out, 'package.json'), '{"name":"palmivo","private":tru
 console.log(`Portable offline release created at ${out}`);
 await mkdir(source, { recursive: true });
 for (const folder of ['src', 'scripts', 'public', 'docs', 'examples', 'qa']) await cp(path.join(root, folder), path.join(source, folder), treeOptions);
+if (candidate) {
+  for (const folder of ['server', 'workflow']) await cp(path.join(root, folder), path.join(source, folder), treeOptions);
+  await cp(path.join(root, 'render.yaml'), path.join(source, 'render.yaml'));
+}
 for (const folder of ['docs', 'qa']) await prunePackagedTree(path.join(root, folder), path.join(source, folder));
 const mlRoot = path.join(root, 'ml');
 if (candidate) {

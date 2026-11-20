@@ -17,6 +17,7 @@ Palmivo turns webcam hand input into editable CAD operations. Users create solid
 - **Inspectable compilation:** draft and committed ASTs, resolved object references, numeric validation, and scene revision checks.
 - **Editable projects:** IndexedDB autosave and versioned JSON export/reopening with recipes, transforms, and command history.
 - **STL handoff:** binary STL export of the selected committed solid with millimetre coordinates.
+- **Inspect aloud:** the hosted workbench can send the selected STL to Render Workflows for an independent mesh check and speak the measured result with ElevenLabs. A camera-optional bushing example opens directly in the workbench.
 - **Local execution:** bundled tracking models, JavaScript, and WASM. Camera processing and project storage stay on the device.
 - **Performance instrumentation:** camera and tracking rates, stage timings, a repeatable benchmark, and JSON measurement export.
 - **Pretrained shortcuts:** swipe left to open Box, swipe right to open Cylinder, and give a thumbs up to open Union. The model runs locally in ONNX Runtime Web when listening is armed. Use the regular palette for operand selection and Commit.
@@ -81,6 +82,10 @@ The geometry AST contains `Create`, `Move`, `Scale`, `Union`, and `Subtract`. Se
 The portable folder includes Node.js and all runtime assets. The launcher starts the local server directly.
 
 The separate **Palmivo-Hybrid** candidate opens on **http://127.0.0.1:4181**. It includes the MIT TSM model, the flanged guide bushing example, Union, and the custom gesture capture and replay tools. See the [offline round guide](docs/OFFLINE_ROUND.md).
+
+### Hosted inspection
+
+Deploy the repository’s Render Blueprint to enable the live **Inspect aloud** panel. Follow the [deployment and verification guide](docs/INSPECT_ALOUD.md) to configure the Web Service, Render Workflow, and ElevenLabs voice.
 
 ### Source development
 
@@ -164,7 +169,7 @@ The **Performance check** panel runs a **3-second warm-up followed by a fixed 20
 pnpm test
 ~~~
 
-The current suite passes **283 tests across 21 files**, covering typed commands, transactions, calibration, activation, tracking lifecycle, preview scheduling, dimensions, project reopening, geometry, STL export, and benchmark accounting. Full landmark-driven CAD scenarios exercise two-hand and one-hand paths at simulated 13/30/60 FPS.
+The application suite covers typed commands, transactions, camera calibration, tracking, STL export, spoken inspection, and benchmark accounting. Full landmark-driven CAD scenarios exercise two-hand and one-hand paths at simulated 13/30/60 FPS. The hosted gateway and Workflow have separate test suites in the [inspection guide](docs/INSPECT_ALOUD.md).
 
 The independent STL audit checks dimensions, volume, normals, welded-edge closure, winding, and the subtraction bore:
 
