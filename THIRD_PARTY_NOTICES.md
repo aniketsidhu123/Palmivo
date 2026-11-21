@@ -34,5 +34,5 @@ Official sources:
 - [Three.js repository](https://github.com/mrdoob/three.js)
 - [Node.js license](https://github.com/nodejs/node/blob/main/LICENSE)
 
-The bundled TSM model is an ONNX export of the official Jester weights. See the [asset provenance](docs/OFFLINE_ROUND.md#mit-tsm-asset-provenance) for the upstream checkpoint and export checksums. Presenter datasets and frozen evaluation clips stay in the local training workspace.
+The bundled TSM model is an ONNX export of the official Jester weights. See [model provenance](docs/MODELS.md#mit-online-tsm-provenance) for the upstream checkpoint and export checksums. Presenter datasets and frozen evaluation clips stay in the local training workspace.
 

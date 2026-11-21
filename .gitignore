@@ -9,17 +9,20 @@
 *.tsbuildinfo
 *.tgz
 
-# Prepared MediaPipe worker, model, and WASM assets
-/public/tracking/
+# Generated browser assets. Keep the two pinned model binaries in Git.
+/public/asset-manifest.json
+/public/tracking/*
+!/public/tracking/hand_landmarker.task
 /public/learned/wasm/
 /public/learned/gesture.onnx
 /public/learned/manifest.json
 /public/tsm/*
 !/public/tsm/mit-tsm-jester-streaming.onnx
 /public/examples/
-/ml/.venv/
+# Private recordings, model experiments, and Python environments
 /ml/data/
 /ml/artifacts/
+.venv/
 
 # Test and Python caches
 /coverage/
@@ -27,6 +30,8 @@
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .vitest/
 
 # Presentation working files and validation staging
