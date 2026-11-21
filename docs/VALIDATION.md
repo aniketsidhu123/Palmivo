@@ -166,3 +166,11 @@ The [final workbench screenshot](media/workbench-final.jpg) shows the actual cam
 
 The README and presentation use preserved stage measurements with their original conditions. No 30–60 FPS camera achievement, controlled before/after speedup, or physical gesture-latency result is inferred from the source changes.
 
+## Expanded shape and mesh workflow
+
+- 371 application tests, six hosted API tests and eight inspection workflow tests passed. The production build verified the pinned ONNX model, local runtime assets and Manifold WASM.
+- In Chrome with non-loopback traffic blocked, the palette and simulated TSM predictions both built the original **20 × 20 × 40 mm** bushing. The actual bundled TSM worker separately returned finite logits for 14 synthetic frames and reproduced first-frame output after a reset.
+- Browser checks covered Sphere and Square Pyramid creation, a version 3 Union reopening, STL import with source-unit review and Cancel, and a committed **1.1×** scale. The scaled bushing reopened from OBJ, project JSON and IndexedDB autosave at **22 × 22 × 44 mm**. An independent STL audit confirmed a closed 400-triangle surface and open centre passage.
+- A separate polygonal OBJ stock part accepted a conical subtraction. Undo restored both operands. Reapplying the cut, reopening the project and exporting binary STL yielded a closed 78-triangle part at **40 × 40 × 40 mm** with **63,739.88 mm³** volume.
+- Gesture tests exercise adjacent-button suppression, fresh activation and rejection of in-flight predictions across pointer-hand loss. The physical first-attempt and gesture-end-to-draft gates require a presenter rehearsal. Runtime settings include an opt-in labelled trace for measuring those gates.
+

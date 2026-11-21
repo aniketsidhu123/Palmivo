@@ -1,6 +1,6 @@
 # Palmivo
 
-Palmivo is a browser-based spatial CAD workbench. Use webcam gestures, a mouse, or a keyboard to create and edit solids. A typed command compiler turns each committed operation into Manifold geometry you can reopen as a Palmivo project or export as STL.
+Palmivo is a browser-based spatial CAD workbench. Use webcam gestures, a mouse, or a keyboard to create and edit solids. A typed command compiler turns each committed operation into Manifold geometry you can reopen as a Palmivo project or export as STL or OBJ.
 
 [Open Palmivo](https://palmivo.onrender.com/) · [Controls and modelling](docs/DEMO_GUIDE.md) · [Model setup](docs/MODELS.md) · [Render deployment](docs/INSPECT_ALOUD.md)
 
@@ -12,11 +12,11 @@ Palmivo is a browser-based spatial CAD workbench. Use webcam gestures, a mouse, 
 
 | Area | Features |
 | --- | --- |
-| Input | Two-hand pinch and drag, two-hand scaling, dwell assist, one-hand dwell, pointer and keyboard controls, and local calibration |
+| Input | Two-hand pinch and drag, two-hand scaling, dwell assist, one-hand dwell, pointer and keyboard controls, local calibration, and a gesture rehearsal trace |
 | Gesture shortcuts | MediaPipe and temporal rules drive the palette. **Listen for tool** arms pretrained MIT Online TSM shortcuts for Box, Cylinder, and Union. |
-| CAD | Boxes and cylinders, exact size presets, 1 mm XY steps, 0.1× scale steps, Boolean Union and Subtract, and final mesh dimensions |
+| CAD | Box, Cylinder, Sphere, Cone, and Square Pyramid, exact size presets, 1 mm XY steps, 0.1× scale steps, Boolean Union and Subtract, and final mesh dimensions |
 | Commands | Typed AST inspection, reversible previews, explicit Commit and Cancel, Pause, and Undo |
-| Projects | IndexedDB autosave, versioned editable JSON, binary STL in millimetres, viewport screenshots, and local CAD recordings |
+| Projects | IndexedDB autosave, versioned JSON with embedded meshes and colours, editable STL and OBJ import, selected-solid mesh export, viewport screenshots, and local CAD recordings |
 | Inspect aloud | A Render Workflow checks the exported STL and ElevenLabs speaks the findings. The inspector shows the caption and run ID and offers replay and mute. |
 
 ## Run Palmivo
@@ -70,6 +70,13 @@ The checkout includes `public/tracking/hand_landmarker.task` for MediaPipe and `
 
 Enable the camera, finish calibration, arm **Listen for tool**, and wait for **Make a shortcut**. Each accepted shortcut opens one draft. Choose operands and **Commit** through the regular controls. The [model guide](docs/MODELS.md) covers setup, file integrity, and the separate ST-GCN and streaming CTC research pipeline.
 
+## Projects and mesh exchange
+
+- Open a Palmivo JSON project to restore its scene, colours, and command history. **Open project** also accepts binary or ASCII STL and polygonal OBJ. Review source units, check the preview, and Commit to add the mesh as an editable solid.
+- Palmivo displays supplied colours in the preview and on the committed model. OBJ accepts embedded RGB or diffuse colours from a matching MTL file. Select OBJ and MTL together or keep them in the approved gesture folder.
+- **Export project** saves versioned JSON. **Export STL** and **Export OBJ** save the selected committed solid in millimetres. OBJ embeds RGB. Binary STL export uses Magics colour attributes.
+- The hand pointer can open projects, reset the workspace, and activate all three export buttons. In Chrome or Edge, grant folder access through **Open project → Choose folder**, then choose files by gesture. Reset requires a separate confirmation.
+
 ## Deploy Inspect aloud
 
 The root [Render Blueprint](render.yaml) defines the `palmivo` web service and the `palmivo-inspection` Workflow. It uses the published `codex/inspect-aloud` branch. After a user chooses **Inspect aloud**, the web service sends the selected binary STL and scene revision to `inspect_part`. That flow measures the mesh and sends a short findings caption to ElevenLabs Flash v2.5. The browser receives the result, caption, and audio. Camera frames, landmarks, and project history stay in the browser.
@@ -84,7 +91,7 @@ Render supplies the workflow slug and generates the session signing secret. Ente
 
 ## Architecture and performance
 
-MediaPipe landmarks, TSM shortcuts, and pointer or keyboard input use one draft controller. The controller validates each AST before executing `Create`, `Move`, `Scale`, `Union`, or `Subtract` in a Manifold WASM worker. Three.js renders the workspace independently of tracking and inference. [Architecture and data contracts](docs/ARCHITECTURE.md)
+MediaPipe landmarks, TSM shortcuts, and pointer or keyboard input use one draft controller. The controller validates each AST before executing `Create`, `ImportMesh`, `Move`, `Scale`, `Union`, or `Subtract` in a Manifold WASM worker. Three.js renders the workspace independently of tracking and inference. [Architecture and data contracts](docs/ARCHITECTURE.md)
 
 A local 640 × 480 webcam sample measured **29.43 camera FPS**, **28.85 tracking FPS**, and **59.82 render FPS** while MIT TSM was listening. The 74 timed predictions yielded the following per-frame results.
 

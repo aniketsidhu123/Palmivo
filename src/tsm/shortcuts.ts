@@ -32,6 +32,7 @@ const THUMB_WINDOW_MS = 330;
 
 /** Each listening session must see neutral input before it can open one draft. */
 export class TsmShortcutGate {
+  constructor(private readonly tolerateWeakThumb = false) {}
   private timestamp = -Infinity;
   private observed = 0;
   private neutral = 0;
@@ -91,9 +92,11 @@ export class TsmShortcutGate {
       if (this.evidence) {
         const competing = !neutral && shortcut !== this.evidence.shortcut && confidence >= COMPETING_CONFIDENCE;
         this.evidence.misses++;
-        if (this.evidence.shortcut.tool === 'union' || competing || this.evidence.misses > 1) this.evidence = null;
+        const thumbInterrupted = this.evidence.shortcut.tool === 'union' &&
+          !(this.tolerateWeakThumb && shortcut === this.evidence.shortcut && confidence >= SWIPE_CONFIDENCE);
+        if (thumbInterrupted || competing || this.evidence.misses > 1) this.evidence = null;
       }
-      return { ready: true, shortcut: null, confidence, accepted: null };
+      return { ready: true, shortcut: this.evidence?.shortcut ?? null, confidence, accepted: null };
     }
 
     if (this.evidence?.shortcut !== shortcut) {

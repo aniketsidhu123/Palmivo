@@ -63,6 +63,30 @@ describe('hand features', () => {
 });
 
 describe('temporal gesture recognizer', () => {
+  it.each([15, 30])('adaptive pointer reduces alternating stationary jitter and large reach error at %i FPS', fps => {
+    const sampleTrial = (adaptive: boolean) => {
+      const recognizer = new GestureRecognizer(DEFAULT_PROFILE, { singleHand: true });
+      recognizer.setAdaptivePointer(adaptive);
+      let time = 0;
+      const observe = (offset: number) => {
+        const f = frame(time); time += 1000 / fps;
+        f.hands[0].landmarks[8].x += offset;
+        return recognizer.process(f);
+      };
+      for (let i = 0; i < 20; i++) observe(0);
+      const centre = observe(0).cursor!.x;
+      const jitter: number[] = [];
+      for (let i = 0; i < 40; i++) {
+        const p = observe(i % 2 ? .003 : -.003);
+        if (i >= 10) jitter.push(Math.abs(p.cursor!.x - centre));
+      }
+      const reach = observe(.15);
+      return { jitter: Math.max(...jitter), reachError: Math.abs(reach.rawCursor!.x - reach.cursor!.x) };
+    };
+    const baseline = sampleTrial(false), candidate = sampleTrial(true);
+    expect(candidate.jitter).toBeLessThan(.85 * baseline.jitter);
+    expect(candidate.reachError).toBeLessThan(.75 * baseline.reachError);
+  });
   it('requires stable neutral tracking before controls can arm', () => {
     const recognizer = new GestureRecognizer();
     expect(recognizer.process(frame(0)).trackingReady).toBe(false);

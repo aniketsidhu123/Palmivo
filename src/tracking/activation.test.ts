@@ -17,6 +17,20 @@ function click(fsm: TargetActivation, timestamp: number, patch: Partial<Activati
 }
 
 describe('stable target pinch activation', () => {
+  it.each(['tool:box', 'tool:commit'])('rejects %s when a closing pinch crosses directly onto its neighbour', targetId => {
+    const fsm = new TargetActivation({ maxCaptureDriftPx: 64 });
+    hover(fsm, 0, 400, 30, { targetId, targetBounds: { width: 80, height: 40 } });
+    fsm.update(sample(450, { targetId, pinchClosing: true }));
+    expect(fsm.update(sample(515, { targetId: 'tool:cancel', cursor: { x: 110, y: 100 },
+      pinchClosing: true, pinchStarted: true, pinched: true }))).toMatchObject({ activate: null });
+  });
+  it('scales closing drift to the shorter side of the acquired target', () => {
+    const fsm = new TargetActivation({ maxCaptureDriftPx: 64 });
+    hover(fsm, 0, 400, 30, { targetBounds: { width: 80, height: 36 } });
+    expect(click(fsm, 450, { targetId: null, cursor: { x: 124, y: 100 } }).activate).toBeNull();
+    hover(fsm, 600, 1000, 30, { targetBounds: { width: 80, height: 36 } });
+    expect(click(fsm, 1050, { targetId: null, cursor: { x: 114, y: 100 } }).activate).toBe('test:click');
+  });
   it.each([13, 15, 30])('captures the target before pinch movement crosses its edge at %i FPS', fps => {
     const fsm = new TargetActivation();
     const { time, output } = hover(fsm, 0, 450, fps);

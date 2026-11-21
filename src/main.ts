@@ -5,17 +5,22 @@ import { TrackingClient } from './tracking/client';
 import { GestureRecognizer, DEFAULT_PROFILE, pinchRatio, sanitizeProfile } from './tracking/gestures';
 import { CalibrationSession } from './tracking/calibration';
 import { TargetActivation } from './tracking/activation';
+import { gestureTrace, mountGestureTrace } from './tracking/gestureTrace';
 import { ScaleSession } from './tracking/manipulation';
 import { TRACKING_GAP_MS } from './tracking/gestures';
 import { PresentationCoordinator } from './core/presentation';
 import { recoverProject } from './core/recovery';
 import { getSizePreset } from './core/presets';
+import { MAX_SOLIDS } from './core/validation';
 import { MAX_PROJECT_FILE_BYTES, parseProjectFile } from './core/projectFile';
 import { exportSolidSTL } from './core/stlExport';
+import { exportSolidOBJ, MAX_MESH_FILE_BYTES, readMeshFile } from './core/meshFile';
 import { applyTransformStep } from './core/transformSteps';
 import { PerformanceBenchmark, type BenchmarkResult } from './core/benchmark';
 import { createPerformancePanel } from './ui/performancePanel';
 import { mountInspectionPanel } from './ui/inspectionPanel';
+import { reviewMeshFile } from './ui/meshReview';
+import { chooseProjectFromFolder } from './ui/projectFolder';
 import { FeatureEncoder } from './learned/features';
 import { mountLearnedTools } from './learned/tools';
 import { mountTsmTools } from './tsm/tools';
@@ -27,6 +32,9 @@ import { recordDemo } from './recording';
 import type { CalibrationProfile, GestureOutput, Tool, TrackingFrame, Vec3 } from './shared/types';
 
 const ui = createUI(document.querySelector<HTMLDivElement>('#app')!);
+const workspaceActions = new Map<string, HTMLButtonElement>([
+  ['workspace:reset', ui.resetButton], ['workspace:open', ui.openProjectButton], ['workspace:export', ui.exportButton],
+]);
 const backendInfo = document.createElement('div'); backendInfo.className = 'runtime-caption';
 backendInfo.append('TRACKING BACKEND / '); const backendValue = document.createElement('span'); backendValue.dataset.metric = 'backend'; backendValue.textContent = 'uninitialized'; backendInfo.append(backendValue);
 document.querySelector('.runtime-panel')!.append(backendInfo);
@@ -43,9 +51,9 @@ function interruptBenchmark(reason: string) {
   ui.setStatus('Benchmark interrupted: ' + reason + '. Start a fresh complete sample.');
 }
 const geometry = new GeometryClient();
-const controller = new Controller({ build: async recipe => {
+const controller = new Controller({ build: async (recipe, assets) => {
   const start = performance.now();
-  try { return await geometry.build(recipe); }
+  try { return await geometry.build(recipe, assets); }
   finally { measure(recipe.kind === 'subtract' || recipe.kind === 'union' ? 'boolean_ms' : 'primitive_ms', performance.now() - start); }
 } });
 const viewport = new CADViewport(ui.viewportHost);
@@ -74,6 +82,7 @@ function tunedProfile(base: CalibrationProfile): CalibrationProfile {
 }
 profile = tunedProfile(calibratedProfile);
 const recognizer = new GestureRecognizer(profile, { singleHand: tuning.mode === 'one-hand' });
+mountGestureTrace(document.querySelector<HTMLElement>('.runtime-panel')!, enabled => recognizer.setAdaptivePointer(enabled));
 let buttonActivation = new TargetActivation({ mode: tuning.mode === 'pinch' ? 'pinch' : 'dwell', hoverMs: tuning.hoverMs, maxCaptureDriftPx: 64 });
 ui.tuningSensitivity.value = tuning.sensitivity; ui.tuningActivation.value = tuning.mode; ui.tuningHover.value = String(tuning.hoverMs);
 ui.tuningSensitivity.disabled = tuning.mode === 'one-hand';
@@ -116,7 +125,7 @@ useMappingButton.addEventListener('click', () => {
 });
 
 const inspection = mountInspectionPanel(
-  ui.stlExportButton,
+  ui.meshExports,
   () => {
     const { scene, selectedId } = controller.state;
     const solid = scene.solids.find(item => item.id === selectedId);
@@ -157,11 +166,23 @@ async function runTool(tool: Tool, source: 'pointer' | 'gesture-rules' | 'keyboa
   if (source !== 'gesture-rules') resetActivation();
   const button = ui.paletteButtons.get(tool);
   if (tool === 'pause') { controller.setPaused(!controller.state.paused); ui.confirmAction(controller.state.paused ? 'Editing paused.' : 'Editing resumed.', button); return; }
-  if (tool === 'cancel') { controller.cancel(); selectionMode = false; ui.setSelectedTool(null); if (beforeDraft && !controller.state.draft) ui.confirmAction('Preview cancelled. Committed scene preserved.', button); return; }
+  if (tool === 'cancel') {
+    controller.cancel();
+    selectionMode = false;
+    ui.setSelectedTool(null);
+    if (beforeDraft && !controller.state.draft) {
+      if (beforeDraft.kind === 'import') viewport.fit();
+      ui.confirmAction('Preview cancelled. Committed scene preserved.', button);
+    }
+    return;
+  }
   if (controller.state.paused || controller.state.busy) return;
   selectionMode = tool === 'select';
   if (tool === 'box') controller.beginCreate('Box');
   if (tool === 'cylinder') controller.beginCreate('Cylinder');
+  if (tool === 'sphere') controller.beginCreate('Sphere');
+  if (tool === 'cone') controller.beginCreate('Cone');
+  if (tool === 'pyramid') controller.beginCreate('Pyramid');
   if (tool === 'move') controller.beginMove();
   if (tool === 'scale') controller.beginScale();
   if (tool === 'subtract') controller.beginSubtract();
@@ -262,8 +283,10 @@ ui.viewportHost.addEventListener('wheel', event => {
 document.addEventListener('keydown', event => {
   if (projectOpening || projectPicking) return;
   if ((event.target as HTMLElement).matches('input, select, textarea') || event.repeat) return;
-  if (event.target === ui.stlExportButton && (event.key === 'Enter' || event.key === ' ')) {
-    event.preventDefault(); exportSelectedSTL('keyboard'); return;
+  if ((event.target === ui.stlExportButton || event.target === ui.objExportButton) && (event.key === 'Enter' || event.key === ' ')) {
+    event.preventDefault();
+    exportSelectedMesh(event.target === ui.stlExportButton ? 'STL' : 'OBJ', 'keyboard');
+    return;
   }
   // Focused controls keep their native keyboard action; shortcuts apply to the workspace.
   if ((event.key === 'Enter' || event.key === ' ') && (event.target as HTMLElement).closest('button')) return;
@@ -290,6 +313,8 @@ function resetActivation() {
   highlightedButton?.classList.remove('gesture-hover'); highlightedButton = null;
 }
 function buttonId(button: HTMLButtonElement): string | null {
+  if (button.dataset.gesture && button.closest('dialog[open]')) return 'dialog:' + button.dataset.gesture;
+  for (const [id, control] of workspaceActions) if (button === control) return id;
   for (const [id, inspectionButton] of inspection.buttons) if (button === inspectionButton) return id;
   if (button === tsm.button) return 'tsm:listen';
   if (button === learned.listenButton) return 'learned:listen';
@@ -297,16 +322,22 @@ function buttonId(button: HTMLButtonElement): string | null {
   if (button.dataset.transformStep) return 'adjust:' + button.dataset.transformStep;
   if (button === ui.testGestureButton) return 'test:click';
   if (button === ui.stlExportButton) return 'export:stl';
+  if (button === ui.objExportButton) return 'export:obj';
+  if (button.id === 'more-shapes' || button.id === 'back-shapes') return button.id;
   if (button.dataset.sizePreset) return `preset:${button.dataset.sizePreset}`;
   const tool = [...ui.paletteButtons].find(([, element]) => element === button)?.[0];
   return tool ? `tool:${tool}` : button.dataset.solidId ? `solid:${button.dataset.solidId}` : null;
 }
 function resolveButton(id: string | null): HTMLButtonElement | null {
   if (!id) return null;
+  if (id.startsWith('dialog:')) return document.querySelector<HTMLButtonElement>(`dialog[open] button[data-gesture="${CSS.escape(id.slice(7))}"]`);
+  if (id.startsWith('workspace:')) return workspaceActions.get(id) ?? null;
   if (id.startsWith('inspect:')) return inspection.buttons.get(id) ?? null;
   if (id.startsWith('adjust:')) return ui.transformStepButtons.get(id.slice(7)) || null;
   if (id === 'test:click') return ui.testGestureButton;
   if (id === 'export:stl') return ui.stlExportButton;
+  if (id === 'export:obj') return ui.objExportButton;
+  if (id === 'more-shapes' || id === 'back-shapes') return document.querySelector<HTMLButtonElement>('#' + id);
   if (id === 'tsm:listen') return tsm.button;
   if (id === 'learned:listen') return learned.listenButton;
   if (id === 'learned:stop') return learned.stopButton;
@@ -315,7 +346,10 @@ function resolveButton(id: string | null): HTMLButtonElement | null {
   return [...document.querySelectorAll<HTMLButtonElement>('[data-solid-id]')].find(button => button.dataset.solidId === id.slice(6)) || null;
 }
 function eligible(button: HTMLButtonElement | null): button is HTMLButtonElement {
-  return !projectOpening && !projectPicking && !!button && !button.disabled && (!calibration || button === ui.testGestureButton) && !!buttonId(button) && button.getBoundingClientRect().width > 0;
+  if (!button || button.disabled || projectPicking || (calibration && button !== ui.testGestureButton) || !button.getBoundingClientRect().width) return false;
+  const dialog = document.querySelector('dialog[open]');
+  if (dialog) return dialog.contains(button) && !!button.dataset.gesture;
+  return !projectOpening && !!buttonId(button);
 }
 function hitButton(x: number, y: number): HTMLButtonElement | null {
   const direct = document.elementFromPoint(x, y)?.closest<HTMLButtonElement>('button') || null;
@@ -344,7 +378,7 @@ function presentManipulation() {
   else ui.clearManipulationFeedback();
 }
 function handleGesture(output: GestureOutput) {
-  if (projectOpening || projectPicking) { ui.setGestureCursor(0, 0, false, false); return; }
+  if (projectPicking || projectOpening && !document.querySelector('dialog[open]')) { ui.setGestureCursor(0, 0, false, false); return; }
   try { processGesture(output); } finally { presentManipulation(); }
 }
 function processGesture(output: GestureOutput) {
@@ -357,7 +391,8 @@ function processGesture(output: GestureOutput) {
       movePhase = 'paused';
       if (output.trackingLost || output.timestamp - lastValidGestureAt >= TRACKING_GAP_MS) moving = null;
     }
-    buttonActivation.update({ timestamp: output.timestamp, targetId: null, trackingReady: false, toolbarArmed: false, pinched: output.dominantPinched, pinchStarted: false, pinchReleased: false, cursor: null });
+    const activation = buttonActivation.update({ timestamp: output.timestamp, targetId: null, trackingReady: false, toolbarArmed: false, pinched: output.dominantPinched, pinchStarted: false, pinchReleased: false, cursor: null });
+    gestureTrace.pointer(output, null, null, activation);
     lastTargetId = null; clickCursorLock = null; highlightedButton?.classList.remove('gesture-hover'); highlightedButton = null;
     ui.setGestureCursor(0, 0, false, false);
     const gate = cameraRunning ? tuning.mode === 'one-hand' ? 'Show your pointer hand and hold steady briefly. No pinch needed.' : output.trackingLost ? 'Show both hands fully in frame.' : 'Release both pinches and hold hands steady briefly.' : 'Enable the camera to test your input.';
@@ -369,7 +404,9 @@ function processGesture(output: GestureOutput) {
   lastValidGestureAt = output.timestamp;
   const x = output.cursor.x * window.innerWidth, y = output.cursor.y * window.innerHeight;
   const hit = hitButton(x, y);
-  const activation = buttonActivation.update({ timestamp: output.timestamp, targetId: hit ? buttonId(hit) : null, trackingReady: true, toolbarArmed: output.toolbarArmed, pinched: output.dominantPinched, pinchStarted: output.pinchStarted, pinchReleased: output.pinchReleased, pinchClosing: output.pinchClosing, cursor: { x, y } });
+  const targetId = hit ? buttonId(hit) : null;
+  const activation = buttonActivation.update({ timestamp: output.timestamp, targetId, trackingReady: true, toolbarArmed: output.toolbarArmed, pinched: output.dominantPinched, pinchStarted: output.pinchStarted, pinchReleased: output.pinchReleased, pinchClosing: output.pinchClosing, cursor: { x, y }, targetBounds: hit?.getBoundingClientRect() });
+  gestureTrace.pointer(output, { x, y }, targetId, activation);
   const target = resolveButton(activation.targetId);
   lastTargetId = activation.targetId;
   if (highlightedButton !== target) { highlightedButton?.classList.remove('gesture-hover'); highlightedButton = target; highlightedButton?.classList.add('gesture-hover'); }
@@ -386,15 +423,19 @@ function processGesture(output: GestureOutput) {
     const button = resolveButton(activation.activate);
     if (!eligible(button)) return;
     if (button === ui.testGestureButton) testClick('gesture');
-    else if (button === tsm.button || button === learned.listenButton || button === learned.stopButton || activation.activate.startsWith('inspect:')) button.click();
+    else if (button === ui.openProjectButton) void gestureOpenProject();
+    else if (button === ui.resetButton) resetWorkspace('gesture');
+    else if (button === ui.exportButton || activation.activate.startsWith('dialog:')) button.click();
+    else if (button === tsm.button || button === learned.listenButton || button === learned.stopButton || activation.activate.startsWith('inspect:') ||
+      activation.activate === 'more-shapes' || activation.activate === 'back-shapes') button.click();
     else if (button.dataset.transformStep) adjustPreview(button.dataset.transformStep, 'gesture-rules');
-    else if (button === ui.stlExportButton) exportSelectedSTL('gesture-rules');
+    else if (button === ui.stlExportButton || button === ui.objExportButton) exportSelectedMesh(button === ui.stlExportButton ? 'STL' : 'OBJ', 'gesture-rules');
     else if (activation.activate.startsWith('tool:')) void runTool(activation.activate.slice(5) as Tool, 'gesture-rules');
     else if (button.dataset.sizePreset) chooseSizePreset(button.dataset.sizePreset, 'gesture-rules');
     else if (button.dataset.solidId) selectSolid(button.dataset.solidId, button);
     return;
   }
-  if (calibration) return;
+  if (calibration || projectOpening || document.querySelector('dialog[open]')) return;
   // A pinch intended for a control must never also grab geometry behind it.
   if (!output.bothPinched && (hit || activation.targetId || clickCursorLock)) {
     scaling?.update(output);
@@ -587,8 +628,9 @@ const tracking = new TrackingClient({
     const pointerPresent = frame.hands.some(hand => hand.handedness === profile.dominantHand && hand.landmarks.length >= 21);
     if (tsm.mode() !== 'rules') {
       const visible = frame.hands.filter(hand => Number.isFinite(pinchRatio(hand, frame.width, frame.height)));
-      tsmHandVisible = visible.length > 0;
-      if (visible.some(hand => hand.handedness === profile.dominantHand)) lastTsmPointerAt = lastFrameAt;
+      tsmHandVisible = visible.filter(hand => hand.handedness === profile.dominantHand).length === 1;
+      if (tsmHandVisible) lastTsmPointerAt = lastFrameAt;
+      else tsm.pointerLost();
       if (tsm.mode() === 'listening' && lastFrameAt - Math.max(lastTsmPointerAt, tsmListeningAt) > TRACKING_GAP_MS) {
         tsm.stop('Pointer hand lost. Bring it back into view and choose Listen for tool again.');
       }
@@ -661,26 +703,50 @@ function changeTuning() {
 ui.tuningSensitivity.addEventListener('change', changeTuning);
 ui.tuningActivation.addEventListener('change', changeTuning);
 ui.tuningHover.addEventListener('change', changeTuning);
-ui.exportButton.addEventListener('click', () => downloadJSON('Palmivo-project.json', controller.exportDocument()));
-function exportSelectedSTL(source: 'pointer' | 'keyboard' | 'gesture-rules' = 'pointer') {
+ui.exportButton.addEventListener('click', () => {
+  if (!initialized || projectOpening || projectPicking) return;
+  downloadJSON('Palmivo-project.json', controller.exportDocument());
+  ui.confirmAction('Project JSON download started.', ui.exportButton);
+});
+function exportSelectedMesh(format: 'STL' | 'OBJ', source: 'pointer' | 'keyboard' | 'gesture-rules' = 'pointer') {
   const state = controller.state;
   if (!initialized || projectOpening || projectPicking || state.busy || state.paused || state.draft || calibration && source === 'gesture-rules') return;
   if (source !== 'gesture-rules') resetActivation();
   const solid = state.scene.solids.find(item => item.id === state.selectedId);
   const mesh = solid && controller.meshes.get(solid.id);
-  if (!solid || !mesh) { ui.setStatus('Select a committed solid before exporting STL.'); return; }
+  if (!solid || !mesh) { ui.setStatus('Select a committed solid before exporting.'); return; }
   try {
-    const result = exportSolidSTL(solid, mesh);
-    const url = URL.createObjectURL(new Blob([result.data], { type: 'model/stl' }));
+    const result = format === 'STL' ? exportSolidSTL(solid, mesh) : exportSolidOBJ(solid, mesh);
+    const url = URL.createObjectURL(new Blob([result.data], { type: format === 'STL' ? 'model/stl' : 'model/obj' }));
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = result.filename;
     anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-    ui.confirmAction('STL download started. Import coordinates as millimetres.', ui.stlExportButton);
+    ui.confirmAction(`${format} download started. Import coordinates as millimetres.`, format === 'STL' ? ui.stlExportButton : ui.objExportButton);
     ui.setStatus(`${result.filename}: ${result.measurements.dimensions.map(value => Number(value.toFixed(2))).join(' × ')} mm. Keep project JSON for editable history.`);
-  } catch (error) { ui.setStatus(`Could not export STL: ${error instanceof Error ? error.message : 'Invalid solid geometry.'}`); }
+  } catch (error) { ui.setStatus(`Could not export ${format}: ${error instanceof Error ? error.message : 'Invalid solid geometry.'}`); }
 }
-ui.stlExportButton.addEventListener('click', () => exportSelectedSTL());
+ui.stlExportButton.addEventListener('click', () => exportSelectedMesh('STL'));
+ui.objExportButton.addEventListener('click', () => exportSelectedMesh('OBJ'));
+const canOpenProject = () => initialized && !projectOpening && !projectPicking && !controller.state.busy && !controller.state.draft;
+async function gestureOpenProject() {
+  if (!canOpenProject()) return;
+  projectOpening = true;
+  tsm.stop('File menu opened. Use Listen for tool to rearm.');
+  moving = null; scaling = null;
+  ui.update({ ...controller.state, busy: true }, controller.meshes);
+  inspection.refresh();
+  let selection: Awaited<ReturnType<typeof chooseProjectFromFolder>> = null;
+  try {
+    selection = await chooseProjectFromFolder();
+  } catch {
+    ui.setStatus('Could not open the project folder.');
+  } finally {
+    projectOpening = false;
+    finishPicking();
+  }
+  if (selection) openLocalFile(selection.file, selection.materials);
+}
 ui.openProjectButton.addEventListener('click', () => {
-  if (!initialized || projectOpening || projectPicking || controller.state.busy || controller.state.draft) return;
+  if (!canOpenProject()) return;
   // Browser file access starts with this ordinary user click during project setup.
   ui.projectFileInput.value = '';
   projectPicking = true;
@@ -697,13 +763,52 @@ function finishPicking() {
 }
 ui.projectFileInput.addEventListener('cancel', finishPicking);
 ui.projectFileInput.addEventListener('change', () => {
-  const file = ui.projectFileInput.files?.[0];
+  const files = Array.from(ui.projectFileInput.files ?? []);
   finishPicking();
-  if (file) void openProject(file.name, () => {
-    if (file.size > MAX_PROJECT_FILE_BYTES) throw Error('Project exceeds the 8 MB file limit.');
+  if (!files.length) return;
+  const materials = files.filter(file => /\.mtl$/i.test(file.name));
+  const models = files.filter(file => !/\.mtl$/i.test(file.name));
+  if (models.length !== 1) { ui.setStatus('Choose one JSON, STL or OBJ file. You can select an OBJ and its MTL files together.'); return; }
+  openLocalFile(models[0], materials);
+});
+function openLocalFile(file: File, materials: readonly File[] = []) {
+  if (/\.(stl|obj)$/i.test(file.name)) { void openMesh(file, materials); return; }
+  if (!/\.json$/i.test(file.name)) { ui.setStatus('Choose a Palmivo JSON, STL or OBJ file.'); return; }
+  void openProject(file.name, () => {
+    if (file.size > MAX_PROJECT_FILE_BYTES) throw Error('Project exceeds the 8 MiB file limit.');
     return file.text();
   });
-});
+}
+async function openMesh(file: File, materials: readonly File[]) {
+  if (projectOpening || projectPicking || !initialized || controller.state.busy || controller.state.draft) return;
+  if (controller.state.paused) { ui.setStatus('Resume editing before importing a solid.'); return; }
+  if (controller.state.scene.solids.length >= MAX_SOLIDS) { ui.setStatus('Free a solid slot before importing a mesh.'); return; }
+  if (file.size > MAX_MESH_FILE_BYTES) { ui.setStatus(`Mesh exceeds the ${MAX_MESH_FILE_BYTES / 1024 ** 2} MiB file limit.`); return; }
+  projectOpening = true;
+  tsm.stop('File opened. Use Listen for tool to rearm.');
+  resetActivation();
+  ui.update({ ...controller.state, busy: true }, controller.meshes);
+  inspection.refresh();
+  try {
+    ui.setStatus('Checking mesh geometry…');
+    const mesh = await reviewMeshFile(file, await readMeshFile(file, 'mm', materials), materials);
+    if (!mesh) { ui.setStatus('Mesh import cancelled.'); return; }
+    if (!controller.beginImport(file.name, mesh)) throw Error(controller.state.message);
+    selectionMode = false;
+    ui.setSelectedTool(null);
+    viewport.fit();
+    ui.confirmAction('Mesh preview ready. Choose Commit to add it.');
+  } catch (error) {
+    ui.setStatus(`Could not import mesh. ${error instanceof Error ? error.message : 'Invalid mesh.'}`);
+  } finally {
+    projectOpening = false;
+    ui.projectFileInput.value = '';
+    recognizer.reset();
+    resetActivation();
+    ui.update({ ...controller.state, busy: controller.state.busy || !initialized }, controller.meshes);
+    inspection.refresh();
+  }
+}
 ui.tryBushingButton.addEventListener('click', () => void openProject('Flanged guide bushing', async () => {
   const response = await fetch('/examples/flanged-guide-bushing-project.json', { redirect: 'error' });
   if (!response.ok) throw Error('The bundled bushing project is unavailable.');
@@ -788,11 +893,34 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { interruptBenchmark('the benchmark tab was backgrounded'); resetLearned(true); }
 });
 let resetArmedUntil = 0;
-ui.resetButton.addEventListener('click', () => {
-  if (projectOpening || projectPicking) return;
-  if (performance.now() > resetArmedUntil) { resetArmedUntil = performance.now() + 3000; ui.setStatus('Click Reset again within 3 seconds to clear the local scene.'); return; }
-  resetArmedUntil = 0; persistenceReady = true; controller.reset(); viewport.resetCamera(); ui.setSelectedTool(null);
-});
+const resetLabel = ui.resetButton.querySelector('span')!;
+let resetConfirmationTimer: ReturnType<typeof setTimeout>;
+function disarmReset() {
+  clearTimeout(resetConfirmationTimer);
+  resetArmedUntil = 0;
+  resetLabel.textContent = 'Reset workspace';
+  ui.resetButton.classList.remove('is-confirming');
+}
+function resetWorkspace(source: 'pointer' | 'gesture') {
+  if (!initialized || projectOpening || projectPicking || controller.state.busy) return;
+  const now = performance.now();
+  if (now >= resetArmedUntil) {
+    clearTimeout(resetConfirmationTimer);
+    const seconds = source === 'gesture' ? 5 : 3;
+    resetArmedUntil = now + seconds * 1000;
+    resetLabel.textContent = 'Confirm reset';
+    ui.resetButton.classList.add('is-confirming');
+    resetConfirmationTimer = setTimeout(disarmReset, seconds * 1000);
+    ui.setStatus(`Choose Confirm reset within ${seconds} seconds to clear the local scene.`);
+    return;
+  }
+  disarmReset();
+  persistenceReady = true;
+  controller.reset();
+  viewport.resetCamera();
+  ui.setSelectedTool(null);
+}
+ui.resetButton.addEventListener('click', () => resetWorkspace('pointer'));
 
 setInterval(() => {
   learned.refresh();

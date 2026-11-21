@@ -8,15 +8,15 @@ const geometry = (): GeometryAdapter => ({ build: vi.fn(async () => mesh()) });
 
 describe('precise primitive size presets', () => {
   it('exposes a unique immutable allowlist and rejects unlisted dimensions', () => {
-    expect(SIZE_PRESETS).toHaveLength(15);
-    expect(new Set(SIZE_PRESETS.map(preset => preset.key)).size).toBe(15);
+    expect(SIZE_PRESETS).toHaveLength(30);
+    expect(new Set(SIZE_PRESETS.map(preset => preset.key)).size).toBe(30);
     expect(Reflect.set(SIZE_PRESETS, 0, null)).toBe(false);
     expect(Reflect.set(SIZE_PRESETS[0], 'value', 999)).toBe(false);
     expect(getSizePreset('box:x:25')).toBeUndefined(); expect(getSizePreset('__proto__')).toBeUndefined();
     expect(getSizePreset('box:x:20')?.value).toBe(20);
   });
 
-  it.each(SIZE_PRESETS)('applies exactly $key to its corresponding draft field', preset => {
+  it.each(SIZE_PRESETS.filter(preset => preset.primitive === 'Box' || preset.primitive === 'Cylinder'))('applies exactly $key to its corresponding draft field', preset => {
     const controller = new Controller(geometry()); controller.beginCreate(preset.primitive);
     controller.applySizePreset(preset.key);
     const draft = controller.state.draft;

@@ -47,7 +47,7 @@ describe('reopening exported projects', () => {
     expect(() => parse(saved)).toThrow(/result ID/);
   });
 
-  it.each(['', '{"schemaVersion":', 'null', '[]', '{"schemaVersion":3,"units":"mm"}'])('rejects malformed or unsupported project %j', text => {
+  it.each(['', '{"schemaVersion":', 'null', '[]', '{"schemaVersion":4,"units":"mm"}'])('rejects malformed or unsupported project %j', text => {
     expect(() => parseProjectFile(text)).toThrow(/JSON|format/);
   });
 
@@ -57,7 +57,7 @@ describe('reopening exported projects', () => {
   });
 
   it.each([
-    (doc: SceneDocument) => { doc.schemaVersion = 3 as never; },
+    (doc: SceneDocument) => { doc.schemaVersion = 4 as never; },
     (doc: SceneDocument) => { doc.units = 'inch' as 'mm'; },
     (doc: SceneDocument) => { doc.revision = -1; },
     (doc: SceneDocument) => { doc.revision = 1.5; },

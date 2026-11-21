@@ -96,11 +96,17 @@ export class GestureRecognizer {
   private previousWrists: { dominant: Landmark; other: Landmark } | null = null;
   private previousPointerWrist: Landmark | null = null;
   private singleHand: boolean;
+  private adaptivePointer = false;
 
   constructor(profile: CalibrationProfile = DEFAULT_PROFILE, options: GestureRecognizerOptions = {}) {
     this.profile = sanitizeProfile(profile); this.singleHand = options.singleHand === true;
   }
   setProfile(profile: CalibrationProfile): void { this.profile = sanitizeProfile(profile); this.reset(); }
+  setAdaptivePointer(enabled: boolean): void {
+    if (enabled === this.adaptivePointer) return;
+    this.adaptivePointer = enabled;
+    this.reset();
+  }
   setSingleHand(enabled: boolean): void {
     if (this.singleHand === enabled) return;
     this.singleHand = enabled; this.reset();
@@ -207,7 +213,15 @@ export class GestureRecognizer {
     };
     this.rawCursor = raw;
     const dt = this.lastTime === null ? 90 : clamp(timestamp - this.lastTime, 0, 150);
-    const alpha = 1 - Math.exp(-dt / 90);
+    let smoothingMs = 90;
+    if (this.adaptivePointer && this.cursor) {
+      // Small residuals mostly reflect stationary jitter. A sustained reach grows
+      // the residual and shortens the time constant without predicting a future point.
+      const residual = Math.hypot(raw.x - this.cursor.x, raw.y - this.cursor.y);
+      const reach = clamp((residual - 0.008) / 0.05);
+      smoothingMs = 125 - 80 * reach;
+    }
+    const alpha = 1 - Math.exp(-dt / smoothingMs);
     this.cursor = this.cursor ? { x: this.cursor.x + alpha * (raw.x - this.cursor.x), y: this.cursor.y + alpha * (raw.y - this.cursor.y) } : raw;
     this.lastTime = timestamp;
   }
