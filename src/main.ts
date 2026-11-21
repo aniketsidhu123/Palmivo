@@ -279,7 +279,7 @@ function drawHands(frame: TrackingFrame) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const edges = [[0,1,2,3,4],[0,5,6,7,8],[5,9,10,11,12],[9,13,14,15,16],[13,17,18,19,20],[0,17]];
   for (const hand of frame.hands) {
-    ctx.strokeStyle = hand.handedness === profile.dominantHand ? '#c5f2bd' : '#ffcb8a'; ctx.lineWidth = 2;
+    ctx.strokeStyle = hand.handedness === profile.dominantHand ? '#c0f3f8' : '#ffcb8a'; ctx.lineWidth = 2;
     for (const chain of edges) { ctx.beginPath(); chain.forEach((index, i) => { const point = hand.landmarks[index]; if (i) ctx.lineTo(point.x * canvas.width, point.y * canvas.height); else ctx.moveTo(point.x * canvas.width, point.y * canvas.height); }); ctx.stroke(); }
     for (const point of hand.landmarks) { ctx.beginPath(); ctx.arc(point.x * canvas.width, point.y * canvas.height, 2.5, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); }
   }
