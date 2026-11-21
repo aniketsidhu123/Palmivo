@@ -570,7 +570,7 @@ const tracking = new TrackingClient({
     if (status.state === 'stopped' || status.state === 'error') {
       tsmHandVisible = false;
       lastTsmPointerAt = -Infinity;
-      resetLearned(true); learnedActive = false; poseEnabled = false;
+      learned.stop(); tsm.release(); encoder.reset(); learnedActive = false; poseEnabled = false;
     }
     if (status.state === 'error') {
       cameraRunning = false; calibration = null; useMappingButton.hidden = true; moving = null; scaling = null; resetActivation();
@@ -619,10 +619,21 @@ const tracking = new TrackingClient({
 });
 ui.exampleCameraButton.addEventListener('click', () => ui.cameraButton.click());
 ui.cameraButton.addEventListener('click', async () => {
-  if (cameraRunning) { tracking.stop(); cameraRunning = false; calibration = null; useMappingButton.hidden = true; moving = null; scaling = null; movePhase = 'ready'; recognizer.reset(); resetActivation(); ui.clearManipulationFeedback(); ui.setCameraState(false); ui.setGestureCursor(0, 0, false, false); ui.setCalibration('', 0); inspection.refresh(); return; }
+  if (cameraRunning) { tracking.stop(); cameraRunning = false; calibration = null; useMappingButton.hidden = true; moving = null; scaling = null; movePhase = 'ready'; recognizer.reset(); resetActivation(); ui.clearManipulationFeedback(); ui.setCameraState(false); ui.setGestureCursor(0, 0, false, false); ui.setCalibration('', 0); inspection.refresh(); tsm.refresh(); return; }
   ui.cameraButton.disabled = true;
   ui.exampleCameraButton.disabled = true;
-  try { if (!assetReady) throw Error('Local tracking assets are not ready. Reload or check your release files.'); await tracking.start(ui.video); cameraRunning = true; ui.setCameraState(true); resetActivation(); if (!hasSavedCalibration && tuning.mode === 'pinch') beginCalibration(); else ui.setCalibration(hasSavedCalibration ? 'Saved mapping loaded. Use Test click before editing.' : 'Using default mapping with dwell assist. Calibrate if the pointer cannot reach the tools.', 0); }
+  try {
+    if (!assetReady) throw Error('The CAD runtime is still preparing. Wait for local assets, then try again.');
+    await tracking.start(ui.video);
+    if (!tracking.active) return;
+    cameraRunning = true;
+    ui.setCameraState(true);
+    resetActivation();
+    if (!hasSavedCalibration && tuning.mode === 'pinch') beginCalibration();
+    else ui.setCalibration(hasSavedCalibration ? 'Saved mapping loaded. Use Test click before editing.' : 'Using default mapping with dwell assist. Calibrate if the pointer cannot reach the tools.', 0);
+    tsm.refresh();
+    void tsm.preload();
+  }
   catch (error) { ui.setStatus(error instanceof Error ? error.message : 'Camera could not start.'); }
   finally { ui.cameraButton.disabled = false; ui.exampleCameraButton.disabled = false; inspection.refresh(); }
 });
@@ -821,17 +832,8 @@ setInterval(() => {
 
 async function initialize() {
   try {
-    const response = await fetch('/asset-manifest.json'); if (!response.ok) throw Error('Asset manifest missing');
-    const manifest = await response.json() as { files: { path: string; bytes: number; sha256: string }[] };
-    for (const item of manifest.files) {
-      if (!item.path.startsWith('/tracking/') || item.path.endsWith('/pose_landmarker_lite.task')) continue;
-      const file = await fetch(item.path); if (!file.ok) throw Error(`${item.path} missing`);
-      const bytes = await file.arrayBuffer();
-      const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
-      if (bytes.byteLength !== item.bytes || digest !== item.sha256) throw Error(`Asset verification failed: ${item.path}`);
-    }
     await geometry.build({ kind: 'box', dimensions: [1, 1, 1] });
-    assetReady = true; ui.setAssetsReady(true); ui.setStatus('Local runtimes verified. Enable the camera or use mouse and keyboard.');
+    assetReady = true; ui.setAssetsReady(true); ui.setStatus('CAD runtime ready. Enable the camera or use mouse and keyboard.');
   } catch (error) { ui.setStatus(`Local assets unavailable: ${error instanceof Error ? error.message : 'unknown error'}`); ui.setAssetsReady(false); }
   const recovery = await recoverProject(loadProject, saved => controller.restore(saved));
   persistenceReady = recovery.canAutosave;

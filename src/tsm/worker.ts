@@ -1,4 +1,5 @@
 import { env, InferenceSession, Tensor } from 'onnxruntime-web/wasm';
+import { fetchVerifiedRuntimeAsset, readRuntimeAssets, runtimeAssetUrl } from '../shared/runtimeAssets';
 import type { TsmReply, TsmRequest } from './runtime';
 
 const scope = self as unknown as {
@@ -89,34 +90,16 @@ async function infer(): Promise<Float32Array> {
   }
 }
 
-async function requireAsset(url: URL): Promise<Response> {
-  if (url.origin !== location.origin) throw new Error('The TSM model must be served from this application.');
-  const response = await fetch(url, { redirect: 'error' });
-  if (!response.ok) throw new Error('The pretrained TSM model is unavailable.');
-  return response;
-}
-
 async function load(baseUrl: string): Promise<void> {
-  const modelBase = new URL('tsm/', baseUrl);
-  const wasmBase = new URL('learned/wasm/', baseUrl);
-  const manifestResponse = await requireAsset(new URL('manifest.json', modelBase));
-  const manifest = await manifestResponse.json();
-  if (manifest?.version !== 1 || manifest?.source !== 'mit-han-lab-online-tsm' ||
-      !Number.isSafeInteger(manifest.modelBytes) || manifest.modelBytes <= 0 ||
-      typeof manifest.modelSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(manifest.modelSha256)) {
-    throw new Error('The local TSM model manifest is invalid.');
-  }
-  const response = await requireAsset(new URL('mit-tsm-jester-streaming.onnx', modelBase));
-  const bytes = await response.arrayBuffer();
-  if (bytes.byteLength !== manifest.modelBytes) throw new Error('The TSM model size does not match its manifest.');
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
-  const hex = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
-  if (hex !== manifest.modelSha256) throw new Error('The TSM model checksum does not match its manifest.');
+  const base = new URL(baseUrl);
+  if (base.origin !== location.origin) throw new Error('The TSM model must be served from this application.');
+  const assets = await readRuntimeAssets(base);
+  const bytes = await fetchVerifiedRuntimeAsset(base, assets, 'tsm/mit-tsm-jester-streaming.onnx');
   env.wasm.numThreads = 1;
   env.wasm.proxy = false;
   env.wasm.wasmPaths = {
-    mjs: new URL('ort-wasm-simd-threaded.mjs', wasmBase).href,
-    wasm: new URL('ort-wasm-simd-threaded.wasm', wasmBase).href,
+    mjs: runtimeAssetUrl(base, assets, 'learned/wasm/ort-wasm-simd-threaded.mjs').href,
+    wasm: runtimeAssetUrl(base, assets, 'learned/wasm/ort-wasm-simd-threaded.wasm').href,
   };
   session = await InferenceSession.create(bytes, { executionProviders: ['wasm'] });
   if (session.inputNames.length !== inputNames.length || !inputNames.every(name => session!.inputNames.includes(name)) ||

@@ -42,7 +42,9 @@ await mkdir(path.join(out, 'runtime'), { recursive: true });
 await cp(path.join(root, 'dist'), path.join(out, 'dist'), treeOptions);
 // Remove obsolete application chunks and temporary QA pages after the new build is present.
 await prunePackagedTree(path.join(root, 'dist'), productionRoot);
-await cp(path.join(root, 'scripts/serve.mjs'), path.join(out, 'scripts/serve.mjs'));
+for (const file of ['serve.mjs', 'runtime-cache.mjs']) {
+  await cp(path.join(root, 'scripts', file), path.join(out, 'scripts', file));
+}
 await cp(path.join(root, 'start-demo.cmd'), path.join(out, 'start-demo.cmd'));
 if (candidate) {
   const launcher = await readFile(path.join(root, 'start-demo.cmd'), 'utf8');

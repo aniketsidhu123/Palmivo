@@ -1,4 +1,5 @@
 import type { LandmarkFrame } from '../learned/features';
+import { readRuntimeAssets, runtimeAssetUrl } from '../shared/runtimeAssets';
 
 export interface CameraInfo {
   settings: { width?: number; height?: number; frameRate?: number; facingMode?: string };
@@ -74,7 +75,10 @@ export class TrackingClient {
       this.report('loading', 'Loading local hand model and tracking worker…');
       // A prebundled classic worker lets MediaPipe's pinned UMD WASM loader use importScripts.
       // The same local file works in Vite development and the offline production build.
-      const workerUrl = new URL('tracking/worker.js', new URL(import.meta.env.BASE_URL, location.origin));
+      const base = new URL(import.meta.env.BASE_URL, location.origin);
+      const assets = await readRuntimeAssets(base);
+      if (generation !== this.generation) return;
+      const workerUrl = runtimeAssetUrl(base, assets, 'tracking/worker.js');
       const worker = new Worker(workerUrl);
       this.worker = worker;
       await new Promise<void>((resolve, reject) => {
@@ -108,7 +112,7 @@ export class TrackingClient {
             else this.fail(`Hand tracking stopped: ${data.error}`);
           }
         };
-        worker.postMessage({ type: 'init', baseUrl: new URL(import.meta.env.BASE_URL, location.origin).href });
+        worker.postMessage({ type: 'init', baseUrl: base.href, assets });
       });
       if (generation !== this.generation) return;
       this.active = true;

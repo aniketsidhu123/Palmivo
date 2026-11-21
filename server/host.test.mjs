@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { mkdtemp, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 import { createHostedServer } from './host.mjs';
 
@@ -11,6 +14,35 @@ const report = {
   caption: 'Twenty by twenty by forty millimetres.', audioBase64: 'SUQz', audioStatus: 'ready',
 };
 const takeCookie = response => response.headers.get('set-cookie')?.split(';')[0];
+
+test('only the current content-versioned runtime URL is served with immutable caching', async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'palmivo-cache-'));
+  const asset = 'model.onnx';
+  const manifest = 'asset-manifest.json';
+  const sha256 = 'a'.repeat(64);
+  t.after(async () => {
+    await Promise.all([unlink(path.join(directory, asset)), unlink(path.join(directory, manifest))]);
+    await rmdir(directory);
+  });
+  await Promise.all([
+    writeFile(path.join(directory, asset), 'model'),
+    writeFile(path.join(directory, manifest), JSON.stringify({ version: 1, files: [{ path: '/' + asset, sha256 }] })),
+  ]);
+
+  const server = createHostedServer({ env: {}, directory });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const url = 'http://127.0.0.1:' + server.address().port + '/';
+  const getHeaders = async resource => {
+    const response = await fetch(url + resource, { method: 'HEAD' });
+    return [response.status, response.headers.get('cache-control')];
+  };
+  assert.deepEqual(await getHeaders(`${asset}?v=${sha256}`), [200, 'public, max-age=31536000, immutable']);
+  assert.deepEqual(await getHeaders(`${asset}?v=${'b'.repeat(64)}`), [404, 'no-store']);
+  assert.deepEqual(await getHeaders(asset), [200, 'no-cache']);
+  assert.deepEqual(await getHeaders(manifest), [200, 'no-cache']);
+});
 
 async function app(t, fetchImpl, config = env) {
   const server = createHostedServer({ env: config, fetchImpl });

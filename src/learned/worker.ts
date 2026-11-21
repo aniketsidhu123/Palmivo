@@ -1,4 +1,5 @@
 import { env, InferenceSession, Tensor } from 'onnxruntime-web/wasm';
+import { readRuntimeAssets, runtimeAssetUrl } from '../shared/runtimeAssets';
 import {
   FEATURE_COUNT, FRAME_LENGTH, LOGIT_COUNT, NODE_COUNT, STATE_CHANNELS, STATE_LENGTHS,
   parseManifest, type WorkerRequest, type WorkerReply,
@@ -58,9 +59,11 @@ async function load(baseUrl: string) {
   if (hex !== manifest.modelSha256) throw new Error('The local gesture model checksum does not match its manifest.');
   env.wasm.numThreads = 1;
   env.wasm.proxy = false;
+  const root = new URL(baseUrl);
+  const assets = await readRuntimeAssets(root);
   env.wasm.wasmPaths = {
-    mjs: new URL('wasm/ort-wasm-simd-threaded.mjs', base).href,
-    wasm: new URL('wasm/ort-wasm-simd-threaded.wasm', base).href,
+    mjs: runtimeAssetUrl(root, assets, 'learned/wasm/ort-wasm-simd-threaded.mjs').href,
+    wasm: runtimeAssetUrl(root, assets, 'learned/wasm/ort-wasm-simd-threaded.wasm').href,
   };
   session = await InferenceSession.create(model, { executionProviders: ['wasm'] });
   if (session.inputNames.length !== 4 || !['frame', ...stateNames].every(name => session!.inputNames.includes(name)) ||
