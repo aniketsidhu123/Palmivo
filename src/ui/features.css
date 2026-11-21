@@ -2,24 +2,24 @@
 .header-actions{gap:10px}.header-actions .local-indicator{margin-right:10px}
 .quiet-button:disabled{opacity:.45}
 .solid-dimensions{padding:9px 0 8px}
-.solid-dimensions>div{display:flex;align-items:center;justify-content:space-between;gap:8px;font:7px var(--mono);color:#87957b}
-.solid-dimensions small{font:7px var(--mono);color:#9ca78e}
-.solid-dimensions>strong{display:block;margin-top:5px;font:11px var(--mono);font-weight:500;color:#365939;overflow-wrap:anywhere}
-.stl-export-button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:35px;width:100%;padding:7px 9px;border:1px solid #b6c9a7;border-radius:4px;background:#e6efdb;color:#335a37;font-size:10px;font-weight:600}
+.solid-dimensions>div{display:flex;align-items:center;justify-content:space-between;gap:8px;font:7px var(--mono);color:#799497}
+.solid-dimensions small{font:7px var(--mono);color:#9394a3}
+.solid-dimensions>strong{display:block;margin-top:5px;font:11px var(--mono);font-weight:500;color:#33585c;overflow-wrap:anywhere}
+.stl-export-button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:35px;width:100%;padding:7px 9px;border:1px solid #a4c8cc;border-radius:4px;background:#dfe0eb;color:#30595d;font-size:10px;font-weight:600}
 .stl-export-button .icon{width:14px;height:14px}
-.stl-export-button small{font:7px var(--mono);font-weight:400;margin-left:auto;color:#78916b}
-.stl-export-button:hover:not(:disabled){background:#d5e6c6;border-color:#88aa72}
+.stl-export-button small{font:7px var(--mono);font-weight:400;margin-left:auto;color:#689094}
+.stl-export-button:hover:not(:disabled){background:#c4e5e8;border-color:#6ea9ae}
 .stl-export-button:disabled{opacity:.4;cursor:not-allowed}
 @media(min-width:851px){.inspector.has-selection .selected-panel{padding-top:10px;padding-bottom:9px}.inspector.has-selection .selected-name{margin-top:7px;margin-bottom:7px}.inspector.has-selection .pipeline{margin-top:12px;margin-bottom:12px}.inspector.has-selection .commit-note{display:none}}
 @media(max-width:850px){.solid-dimensions{padding-top:13px;padding-bottom:12px}.solid-dimensions>div,.solid-dimensions small{font-size:9px}.solid-dimensions>strong{font-size:14px;margin-top:7px}.stl-export-button{min-height:44px;font-size:12px}.stl-export-button small{font-size:9px}.stl-export-button .icon{width:17px;height:17px}}
 .size-presets{flex-shrink:0;border-bottom:1px solid var(--line);padding:10px 0}
-.preset-dimensions{font:10px var(--mono);color:#496544;margin:7px 0 8px}
+.preset-dimensions{font:10px var(--mono);color:#426467;margin:7px 0 8px}
 .preset-group{display:flex;flex-direction:column;gap:5px}
 .preset-row{display:grid;grid-template-columns:42px repeat(3,minmax(0,1fr));align-items:center;gap:5px}
-.preset-field{font:9px var(--mono);color:#7d8c70}
-.size-preset{height:35px;min-width:0;border:1px solid #cfdbc5;border-radius:4px;background:#f5f7ed;color:#5b7150;font:11px var(--mono);padding:5px;transition:background .12s,border-color .12s}
-.size-preset:hover:not(:disabled){background:#dfead5;border-color:#92b17e}
-.size-preset[aria-pressed="true"]{background:#dceacc;color:#234c2b;border-color:#8baa72;font-weight:bold;box-shadow:inset 0 0 0 1px #8baa7233}
+.preset-field{font:9px var(--mono);color:#6e8b8e}
+.size-preset{height:35px;min-width:0;border:1px solid #c3dbdd;border-radius:4px;background:#efeff5;color:#4e7073;font:11px var(--mono);padding:5px;transition:background .12s,border-color .12s}
+.size-preset:hover:not(:disabled){background:#d3eaec;border-color:#7ab0b5}
+.size-preset[aria-pressed="true"]{background:#d1d3e5;color:#204b4f;border-color:#6ea9ae;font-weight:bold;box-shadow:inset 0 0 0 1px #6ea9ae33}
 .size-preset:disabled{opacity:.5}
 .is-create-draft .pipeline{margin-top:10px;margin-bottom:10px}
 .is-create-draft .instruction-card{padding:9px 11px}
@@ -27,13 +27,13 @@
 .is-create-draft .ast-panel{padding-top:9px}
 .is-create-draft .code-window{margin-top:7px}
 .is-create-draft .commit-note{display:none}
-.project-review{color:var(--ink);background:#fafaf3;border:1px solid #d0d9c7;border-radius:12px;padding:28px;max-width:min(460px,calc(100vw - 32px));box-shadow:0 20px 90px #0a241e55}
-.project-review::backdrop{background:#132a25aa;backdrop-filter:blur(3px)}
+.project-review{color:var(--ink);background:#f4f5f9;border:1px solid #c6d9da;border-radius:12px;padding:28px;max-width:min(460px,calc(100vw - 32px));box-shadow:0 20px 90px #08232655}
+.project-review::backdrop{background:#112a2caa;backdrop-filter:blur(3px)}
 .project-review h2{font-size:22px;line-height:1.25;font-weight:500;letter-spacing:-.5px;margin:10px 0 14px}
-.project-review p{font-size:12px;line-height:1.65;color:#76846c;margin:0}
-.project-review-file{margin:18px 0;padding:14px;background:#eaf0e1;border:1px solid #d5dfca;border-radius:5px;overflow-wrap:anywhere}
-.project-review-file strong{font-size:13px;font-weight:600;display:block;color:#3d603d}
-.project-review-file span{display:block;font:10px var(--mono);color:#7b8e6b;margin-top:8px}
+.project-review p{font-size:12px;line-height:1.65;color:#6a8486;margin:0}
+.project-review-file{margin:18px 0;padding:14px;background:#e4e5ed;border:1px solid #cecfdb;border-radius:5px;overflow-wrap:anywhere}
+.project-review-file strong{font-size:13px;font-weight:600;display:block;color:#3a5f63}
+.project-review-file span{display:block;font:10px var(--mono);color:#688d91;margin-top:8px}
 .project-review p.project-review-note{font-size:10px}
 .project-review-actions{display:flex;gap:10px;margin-top:24px}
 .project-review-actions button{flex:1;min-height:42px;font-size:11px;font-weight:600;padding:8px;border-radius:5px}
@@ -43,4 +43,4 @@
 @media(max-width:480px){.header-actions{gap:5px}.header-actions .quiet-button{padding:8px;gap:5px}.header-actions .quiet-button>span{display:none}.project-review{padding:22px}.project-review-actions{flex-direction:column-reverse}}
 .learned-tools { margin-top: .75rem; }
 .learned-tools summary { cursor: pointer; font-weight: 600; }
-.learned-tools a { display: inline-block; color: #c5f2bd; margin: .65rem 0 .2rem; }
+.learned-tools a { display: inline-block; color: #b9f1f6; margin: .65rem 0 .2rem; }

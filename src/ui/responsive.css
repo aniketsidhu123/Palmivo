@@ -27,7 +27,7 @@
  .rail-label>span{display:inline}
  .tool-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
  .tool-divider{display:none}
- .tool-button{min-height:43px;font-size:10px;gap:6px;padding:8px 7px;justify-content:center;background:#eceee3;border-color:#dce1d2}
+ .tool-button{min-height:43px;font-size:10px;gap:6px;padding:8px 7px;justify-content:center;background:#e5e6ec;border-color:#d5d6de}
  .tool-button .icon{width:17px;height:17px}
  .tool-button kbd{display:none}
  .rail-bottom{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:7px 0 0;padding:0}
@@ -84,7 +84,7 @@
  .dominant-select{display:flex;font-size:6px;margin-left:0}
  .dominant-select select{font-size:11px}
  .calibration-status{font-size:8px!important;line-height:1.6!important}
- .runtime-panel{padding:18px;border:1px solid #dee3d3;border-radius:6px;background:#eef1e5}
+ .runtime-panel{padding:18px;border:1px solid #d6d7e0;border-radius:6px;background:#e7e8ef}
  .runtime-panel .section-heading h3{font-size:9px}
  .runtime-panel>strong{font-size:15px;line-height:1.4;margin:10px 0}
  .runtime-panel>p{font-size:10px;max-width:none;line-height:1.6}
