@@ -10,6 +10,16 @@
 .stl-export-button small{font:7px var(--mono);font-weight:400;margin-left:auto;color:#689094}
 .stl-export-button:hover:not(:disabled){background:#c4e5e8;border-color:#6ea9ae}
 .stl-export-button:disabled{opacity:.4;cursor:not-allowed}
+.mesh-export-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.mesh-export-actions[hidden]{display:none}
+.mesh-source-units,.project-folder-pages{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.mesh-source-units button,.project-folder-pages button,.project-folder-files button{min-height:38px;font-size:12px}
+.mesh-source-units button[aria-pressed=true]{background:#234447;color:#effcfd;border-color:#89c4c9}
+.project-folder{width:min(450px,calc(100vw - 32px))}
+.project-folder-files{display:grid;gap:6px;margin:10px 0}
+.project-folder-files button{display:block;text-align:left;overflow-wrap:anywhere}
+.project-folder-pages{justify-content:space-between}
+.project-folder-pages span{font:11px var(--mono)}
 @media(min-width:851px){.inspector.has-selection .selected-panel{padding-top:10px;padding-bottom:9px}.inspector.has-selection .selected-name{margin-top:7px;margin-bottom:7px}.inspector.has-selection .pipeline{margin-top:12px;margin-bottom:12px}.inspector.has-selection .commit-note{display:none}}
 @media(max-width:850px){.solid-dimensions{padding-top:13px;padding-bottom:12px}.solid-dimensions>div,.solid-dimensions small{font-size:9px}.solid-dimensions>strong{font-size:14px;margin-top:7px}.stl-export-button{min-height:44px;font-size:12px}.stl-export-button small{font-size:9px}.stl-export-button .icon{width:17px;height:17px}}
 .size-presets{flex-shrink:0;border-bottom:1px solid var(--line);padding:10px 0}

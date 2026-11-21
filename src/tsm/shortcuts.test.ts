@@ -16,6 +16,29 @@ function withConfidence(winner: number, probability: number): Float32Array {
 }
 
 describe('MIT TSM shortcut gate', () => {
+  it('keeps provisional swipe feedback through one weak frame without opening a draft', () => {
+    const gate = new TsmShortcutGate();
+    warm(gate);
+    gate.step(logits(16), 268);
+    expect(gate.step(logits(2), 335)).toMatchObject({ shortcut: { tool: 'box' }, accepted: null });
+    expect(gate.step(logits(2), 402)).toMatchObject({ shortcut: null, accepted: null });
+  });
+  it('trials one same-label dip across uneven frame intervals with three strong thumb predictions', () => {
+    const gate = new TsmShortcutGate(true);
+    warm(gate);
+    expect(gate.step(logits(20), 268).accepted).toBeNull();
+    expect(gate.step(withConfidence(20, .72), 330).accepted).toBeNull();
+    expect(gate.step(logits(20), 421).accepted).toBeNull();
+    expect(gate.step(logits(20), 494).accepted?.tool).toBe('union');
+  });
+  it.each([2, 17, 20])('trial still rejects neutral, opposite or low-confidence interruption (%d)', label => {
+    const gate = new TsmShortcutGate(true);
+    warm(gate);
+    gate.step(logits(20), 268);
+    gate.step(withConfidence(label, .66), 335);
+    gate.step(logits(20), 402);
+    expect(gate.step(logits(20), 469).accepted).toBeNull();
+  });
   it.each([[16, 'box'], [17, 'cylinder']] as const)(
     'opens a swipe draft once, tolerating one neutral prediction for class %d',
     (index, tool) => {

@@ -1,0 +1,7 @@
+.primary-shapes,.shape-chooser{display:flex;flex-direction:column;gap:4px}
+.primary-shapes[hidden],.shape-chooser[hidden]{display:none!important}
+#more-shapes{color:#b8bacf}
+#back-shapes{color:#a1b7de;border-color:#3b435c}
+.shape-chooser .tool-button{white-space:normal}
+.shape-chooser .tool-button span{line-height:1.25}
+@media(max-width:850px){.primary-shapes,.shape-chooser{display:contents}}

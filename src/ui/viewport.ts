@@ -122,7 +122,7 @@ export class CADViewport {
     this.diagnostics.structuralUpdates++;
     this.state = state;
     const solids = [...state.scene.solids];
-    if (state.draft?.kind === 'create') solids.push(state.draft.solid);
+    if (state.draft?.kind === 'create' || state.draft?.kind === 'import') solids.push(state.draft.solid);
     const ids = new Set(solids.map(solid => solid.id));
     for (const [id, entry] of this.solids) {
       if (!ids.has(id)) { this.disposeEntry(entry); this.solids.delete(id); }
@@ -147,21 +147,24 @@ export class CADViewport {
       const scale = state.draft?.kind === 'scale' && state.draft.targetId === solid.id ? state.draft.uniformScale : solid.scale;
       mesh.position.set(...move);
       mesh.scale.setScalar(scale);
-      const isPreview = state.draft?.kind === 'create' && state.draft.solid.id === solid.id;
+      const isPreview = (state.draft?.kind === 'create' || state.draft?.kind === 'import') && state.draft.solid.id === solid.id;
       const isCutter = state.draft?.kind === 'subtract' && state.draft.cutterId === solid.id;
       const isJoinOperand = state.draft?.kind === 'union' && state.draft.otherId === solid.id;
-      mesh.material.color.set(isCutter ? '#f58b72' : isJoinOperand ? '#86d6ee' : solid.color || '#bce8cc');
+      const hasColors = mesh.geometry.hasAttribute('color');
+      const colorVertices = hasColors && !isCutter && !isJoinOperand;
+      mesh.material.color.set(isCutter ? '#f58b72' : isJoinOperand ? '#86d6ee' : colorVertices ? '#ffffff' : solid.color || '#bce8cc');
       const transparent = isPreview || isCutter || isJoinOperand;
       const depthWrite = !isCutter && !isJoinOperand;
-      const materialFlagsChanged = mesh.material.transparent !== transparent || mesh.material.depthWrite !== depthWrite;
+      const materialFlagsChanged = mesh.material.transparent !== transparent || mesh.material.depthWrite !== depthWrite || mesh.material.vertexColors !== colorVertices;
+      mesh.material.vertexColors = colorVertices;
       mesh.material.transparent = transparent;
-      mesh.material.opacity = isCutter ? .43 : isJoinOperand ? .61 : isPreview ? .76 : 1;
+      mesh.material.opacity = isCutter ? .43 : isJoinOperand ? .61 : isPreview ? (hasColors ? .94 : .76) : 1;
       mesh.material.depthWrite = depthWrite;
-      mesh.material.emissive.set(isPreview ? '#142c2c' : '#000000');
+      mesh.material.emissive.set(isPreview && !hasColors ? '#142c2c' : '#000000');
       if (materialFlagsChanged) mesh.material.needsUpdate = true;
       mesh.updateMatrixWorld(true);
     }
-    const outlinedId = state.draft?.kind === 'create' ? state.draft.solid.id : state.selectedId;
+    const outlinedId = state.draft?.kind === 'create' || state.draft?.kind === 'import' ? state.draft.solid.id : state.selectedId;
     this.updateOutline(outlinedId ? this.solids.get(outlinedId)?.mesh ?? null : null);
     this.updateFloor();
     this.renderer.shadowMap.needsUpdate = true;
@@ -228,6 +231,15 @@ export class CADViewport {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(source.positions, 3));
     geometry.setIndex(new THREE.BufferAttribute(source.indices, 1));
+    if (source.colors) {
+      const color = new THREE.Color();
+      const linear = new Float32Array(source.colors.length);
+      for (let i = 0; i < source.colors.length; i += 3) {
+        color.setRGB(source.colors[i] / 255, source.colors[i + 1] / 255, source.colors[i + 2] / 255, THREE.SRGBColorSpace);
+        color.toArray(linear, i);
+      }
+      geometry.setAttribute('color', new THREE.BufferAttribute(linear, 3));
+    }
     if (source.normals?.length === source.positions.length) geometry.setAttribute('normal', new THREE.BufferAttribute(source.normals, 3));
     else geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
@@ -240,6 +252,14 @@ export class CADViewport {
     if (recipe.kind === 'cylinder') {
       const geometry = new THREE.CylinderGeometry(recipe.radius, recipe.radius, recipe.height, recipe.segments, 1);
       geometry.rotateX(Math.PI / 2);
+      return geometry;
+    }
+    if (recipe.kind === 'sphere') return new THREE.SphereGeometry(recipe.radius, recipe.segments, recipe.segments / 2);
+    if (recipe.kind === 'cone' || recipe.kind === 'pyramid') {
+      const radius = recipe.kind === 'cone' ? recipe.radius : recipe.base / Math.SQRT2;
+      const geometry = new THREE.ConeGeometry(radius, recipe.height, recipe.kind === 'cone' ? recipe.segments : 4, 1);
+      geometry.rotateX(Math.PI / 2);
+      if (recipe.kind === 'pyramid') geometry.rotateZ(Math.PI / 4);
       return geometry;
     }
     // A restored Boolean remains invisible until its authoritative worker mesh is ready.

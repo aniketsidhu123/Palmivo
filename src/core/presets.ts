@@ -5,6 +5,9 @@ export type SizePreset = Readonly<{
 } & (
   | { primitive: 'Box'; field: 'x' | 'y' | 'z' }
   | { primitive: 'Cylinder'; field: 'radius' | 'height' }
+  | { primitive: 'Sphere'; field: 'radius' }
+  | { primitive: 'Cone'; field: 'radius' | 'height' }
+  | { primitive: 'Pyramid'; field: 'base' | 'height' }
 )>;
 
 const presets: SizePreset[] = [
@@ -23,6 +26,21 @@ const presets: SizePreset[] = [
   { key: 'cylinder:height:20', primitive: 'Cylinder', field: 'height', label: 'Height · 20 mm', value: 20 },
   { key: 'cylinder:height:40', primitive: 'Cylinder', field: 'height', label: 'Height · 40 mm', value: 40 },
   { key: 'cylinder:height:60', primitive: 'Cylinder', field: 'height', label: 'Height · 60 mm', value: 60 },
+  { key: 'sphere:radius:5', primitive: 'Sphere', field: 'radius', label: 'Radius · 5 mm', value: 5 },
+  { key: 'sphere:radius:10', primitive: 'Sphere', field: 'radius', label: 'Radius · 10 mm', value: 10 },
+  { key: 'sphere:radius:15', primitive: 'Sphere', field: 'radius', label: 'Radius · 15 mm', value: 15 },
+  { key: 'cone:radius:5', primitive: 'Cone', field: 'radius', label: 'Radius · 5 mm', value: 5 },
+  { key: 'cone:radius:10', primitive: 'Cone', field: 'radius', label: 'Radius · 10 mm', value: 10 },
+  { key: 'cone:radius:15', primitive: 'Cone', field: 'radius', label: 'Radius · 15 mm', value: 15 },
+  { key: 'cone:height:20', primitive: 'Cone', field: 'height', label: 'Height · 20 mm', value: 20 },
+  { key: 'cone:height:30', primitive: 'Cone', field: 'height', label: 'Height · 30 mm', value: 30 },
+  { key: 'cone:height:40', primitive: 'Cone', field: 'height', label: 'Height · 40 mm', value: 40 },
+  { key: 'pyramid:base:20', primitive: 'Pyramid', field: 'base', label: 'Base · 20 mm', value: 20 },
+  { key: 'pyramid:base:30', primitive: 'Pyramid', field: 'base', label: 'Base · 30 mm', value: 30 },
+  { key: 'pyramid:base:40', primitive: 'Pyramid', field: 'base', label: 'Base · 40 mm', value: 40 },
+  { key: 'pyramid:height:20', primitive: 'Pyramid', field: 'height', label: 'Height · 20 mm', value: 20 },
+  { key: 'pyramid:height:30', primitive: 'Pyramid', field: 'height', label: 'Height · 30 mm', value: 30 },
+  { key: 'pyramid:height:40', primitive: 'Pyramid', field: 'height', label: 'Height · 40 mm', value: 40 },
 ];
 
 /** Shared allowlist: UI labels and controller behavior use the same immutable entries. */

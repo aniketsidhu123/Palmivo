@@ -34,6 +34,30 @@ function fixture() {
 function outlineX(outline: THREE.BoxHelper): number[] { return Array.from(outline.geometry.getAttribute('position').array).filter((_, index) => index % 3 === 0); }
 
 describe('allocation-bounded CAD preview updates', () => {
+  it.each([
+    { kind: 'sphere' as const, radius: 10, segments: 32 },
+    { kind: 'cone' as const, radius: 10, height: 20, segments: 32 },
+    { kind: 'pyramid' as const, base: 20, height: 20 },
+  ])('renders a centered native $kind preview with matching world extents', recipe => {
+    const { view, internal } = viewportHarness(); const { state } = fixture(); state.scene.solids = [];
+    const solid: Solid = { id: 'new-shape', name: 'New shape', color: '#84b8ee', position: [0,0,0], scale: 1, recipe };
+    state.draft = { kind: 'create', solid }; view.update(state, new Map());
+    const entry = internal.solids.get(solid.id)!;
+    expect(entry.mesh.geometry.boundingBox!.getSize(new THREE.Vector3()).toArray()).toEqual([20,20,20]);
+    expect(entry.mesh.geometry.boundingBox!.min.toArray()).toEqual([-10,-10,-10]);
+    expect(entry.mesh.material.transparent).toBe(true); expect(entry.mesh.material.opacity).toBe(.76);
+    expect(internal.outlinedMesh).toBe(entry.mesh);
+  });
+  it('uses an imported authoritative mesh for the same transparent preview and removes it on Cancel', () => {
+    const { view, internal } = viewportHarness(); const { state } = fixture(); state.scene.solids = [];
+    const solid: Solid & { recipe: { kind: 'mesh'; assetId: string } } = { id: 'import-preview', name: 'Imported solid', recipe: { kind: 'mesh', assetId: 'asset-1' }, color: '#84b8ee', position: [0,0,0], scale: 1 };
+    state.draft = { kind: 'import', solid }; view.update(state, new Map([[solid.id, geometrySource()]]));
+    const entry = internal.solids.get(solid.id)!;
+    expect(entry.mesh.geometry.boundingBox!.getSize(new THREE.Vector3()).toArray()).toEqual([20,20,20]);
+    expect(entry.mesh.material.transparent).toBe(true); expect(internal.outlinedMesh).toBe(entry.mesh);
+    const dispose = vi.spyOn(entry.mesh.geometry, 'dispose'); state.draft = null; view.update(state, new Map());
+    expect(internal.solids.size).toBe(0); expect(internal.outline).toBeNull(); expect(dispose).toHaveBeenCalledTimes(1);
+  });
   it('rebuilds changed creation dimensions and keeps large or moved solids above the decorative floor', () => {
     const { view, internal } = viewportHarness();
     const { state } = fixture();

@@ -164,7 +164,7 @@ export function mountInspectionPanel(
     setStatus('Uploading selected solid…');
     refresh();
     try {
-      const stl = exportSolidSTL(subject.solid, subject.mesh);
+      const stl = exportSolidSTL(subject.solid, subject.mesh, false);
       const postedAt = performance.now();
       const reply = await runInspection(stl.data, subject.scene.revision, request.signal, (runId, phase) => {
         showRun(runId);

@@ -83,7 +83,7 @@ describe('scene compiler and transaction controller',()=>{
     const first=new Controller(adapter()); await add(first); const saved=first.exportDocument(); const next=new Controller(adapter()); expect(await next.restore(saved)).toBe(true); expect(next.exportDocument()).toEqual(saved); expect(next.meshes.size).toBe(1);
   });
   it('rejects unsupported saved projects without replacing the scene',async()=>{
-    const controller=new Controller(adapter()); await add(controller); const original=controller.exportDocument(); const invalid=controller.exportDocument(); invalid.schemaVersion=3 as never;
+    const controller=new Controller(adapter()); await add(controller); const original=controller.exportDocument(); const invalid=controller.exportDocument(); invalid.schemaVersion=4 as never;
     expect(await controller.restore(invalid)).toBe(false); expect(controller.exportDocument()).toEqual(original);
   });
   it('does not publish repeated Move samples within the same snapped cell', async () => {

@@ -23,3 +23,26 @@ export async function loadProject(): Promise<SceneDocument | null> {
     request.onsuccess = () => resolve(request.result || null); request.onerror = () => reject(request.error);
   }); } finally { db.close(); }
 }
+
+export async function loadProjectFolder(): Promise<FileSystemDirectoryHandle | null> {
+  const db = await database();
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = db.transaction('projects', 'readonly').objectStore('projects').get('project-folder');
+      request.onsuccess = () => resolve(request.result ?? null);
+      request.onerror = () => reject(request.error);
+    });
+  } finally { db.close(); }
+}
+
+export async function saveProjectFolder(folder: FileSystemDirectoryHandle): Promise<void> {
+  const db = await database();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('projects', 'readwrite');
+      tx.objectStore('projects').put(folder, 'project-folder');
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally { db.close(); }
+}

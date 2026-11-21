@@ -4,6 +4,8 @@ export type ActivationPhase = 'tracking-lost' | 'gate-closed' | 'release' | 'idl
 export interface ActivationInput {
   timestamp: number;
   targetId: string | null;
+  /** CSS pixel size of the hit control, measured in the current layout. */
+  targetBounds?: { width: number; height: number };
   trackingReady: boolean;
   toolbarArmed: boolean;
   pinched: boolean;
@@ -48,6 +50,7 @@ export class TargetActivation {
   private hoverSince = 0;
   private lastHoverCursor: Cursor | null = null;
   private lastHoverTime = 0;
+  private captureRadius = 0;
   private capture: { id: string; cursor: Cursor } | null = null;
   private closingCycle = false;
   private requireRelease = true;
@@ -135,6 +138,10 @@ export class TargetActivation {
       if (input.targetId !== this.hoverId) { this.hoverId = input.targetId; this.hoverSince = input.timestamp; }
       this.lastHoverCursor = { ...cursor };
       this.lastHoverTime = input.timestamp;
+      const bounds = input.targetBounds;
+      this.captureRadius = bounds && bounds.width > 0 && bounds.height > 0
+        ? Math.min(this.maxCaptureDriftPx, Math.min(bounds.width, bounds.height) / 2)
+        : this.maxCaptureDriftPx;
       const elapsed = input.timestamp - this.hoverSince;
       const duration = this.mode === 'dwell' ? (this.hoverId === 'tool:commit' ? this.commitDwellMs : this.dwellMs) : this.hoverMs;
       const progress = duration === 0 ? 1 : elapsed / duration;
@@ -157,14 +164,19 @@ export class TargetActivation {
       this.closingCycle = true;
       const freshClose = input.pinchClosing === true || input.pinchStarted;
       const recent = input.timestamp - this.lastHoverTime <= 250;
-      const nearPrevious = this.lastHoverCursor !== null && Math.hypot(cursor.x - this.lastHoverCursor.x, cursor.y - this.lastHoverCursor.y) <= this.maxCaptureDriftPx;
+      const nearPrevious = this.lastHoverCursor !== null && Math.hypot(cursor.x - this.lastHoverCursor.x, cursor.y - this.lastHoverCursor.y) <= this.captureRadius;
       if (freshClose && this.hoverId && this.lastHoverCursor && recent && input.timestamp - this.hoverSince >= this.hoverMs && (input.targetId === this.hoverId || nearPrevious)) {
         this.capture = { id: this.hoverId, cursor: { ...this.lastHoverCursor } };
       }
       this.clearHover();
     }
 
-    if (this.capture && input.targetId !== this.capture.id && Math.hypot(cursor.x - this.capture.cursor.x, cursor.y - this.capture.cursor.y) > this.maxCaptureDriftPx) this.capture = null;
+    if (this.capture && input.targetId !== this.capture.id) {
+      const overAnotherControl = input.targetId !== null;
+      const exceededRadius = Math.hypot(cursor.x - this.capture.cursor.x, cursor.y - this.capture.cursor.y) > this.captureRadius;
+      // Closing in the gap may keep a target. Closing on its neighbour is ambiguous.
+      if (overAnotherControl || exceededRadius) this.capture = null;
+    }
 
     if (input.pinchStarted) {
       const activated = this.capture?.id ?? null;

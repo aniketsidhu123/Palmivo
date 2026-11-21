@@ -8,10 +8,15 @@ import './responsive.css';
 import './gesture-controls.css';
 import './features.css';
 import './workbench.css';
+import './shapes.css';
 
 const icons: Record<string, string> = {
   box: '<path d="m12 3 9 5v8l-9 5-9-5V8zM3 8l9 5 9-5M12 13v8M7.5 5.5l9 5"/>',
   cylinder: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  sphere: '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>',
+  cone: '<path d="M12 3 3 19c0 2 18 2 18 0L12 3Z"/><path d="M3 19c0-3 18-3 18 0"/>',
+  pyramid: '<path d="m12 3 10 15-10 4-10-4L12 3Zm0 0v19M2 18l10-5 10 5"/>',
+  shapes: '<circle cx="6" cy="6" r="3"/><path d="M14 3h7v7h-7zM3 20l4-7 4 7zM15 14h6v7h-6z"/>',
   select: '<path d="m5 3 15 9-7 2-3 7z"/>',
   move: '<path d="M12 3v18M3 12h18M8 7l4-4 4 4M8 17l4 4 4-4M7 8l-4 4 4 4M17 8l4 4-4 4"/>',
   scale: '<path d="M14 3h7v7M21 3l-8 8M10 21H3v-7M3 21l8-8"/><path d="M3 9V3h6M15 21h6v-6" opacity=".45"/>',
@@ -44,6 +49,8 @@ export interface WorkspaceUI {
   calibrateButton: HTMLButtonElement;
   exportButton: HTMLButtonElement;
   stlExportButton: HTMLButtonElement;
+  objExportButton: HTMLButtonElement;
+  meshExports: HTMLElement;
   openProjectButton: HTMLButtonElement;
   projectFileInput: HTMLInputElement;
   reviewProject(filename: string, solids: number, commands: number, example?: boolean): Promise<boolean>;
@@ -78,18 +85,22 @@ const toolData: Array<[Tool, string, string, string]> = [
   ['union', 'Union', 'U', 'Join the selected solid with a second solid'],
   ['undo', 'Undo', 'Ctrl Z', 'Undo the last committed command (Ctrl+Z)'],
 ];
+const extraShapes: Array<[Tool, string, string, string]> = [
+  ['sphere', 'Sphere', '', 'Create a sphere'], ['cone', 'Cone', '', 'Create a cone'], ['pyramid', 'Square pyramid', '', 'Create a square pyramid'],
+];
+const toolButton = ([tool, label, key, title]: [Tool, string, string, string]) => `<button type="button" class="tool-button" data-tool="${tool}" title="${title}" aria-label="${title}">${icon(tool)}<span>${label}</span>${key ? `<kbd>${key}</kbd>` : ''}</button>`;
 
 export function createUI(root: HTMLElement): WorkspaceUI {
   root.innerHTML = `
     <header class="app-header">
       <a class="brand" href="#" aria-label="Palmivo workspace"><span class="brand-mark"><i></i><i></i><i></i></span><span>palmivo<span class="brand-period">.</span></span></a>
       <div class="header-context"><span class="header-divider"></span><span>GESTURE CAD / LOCAL COMPILER</span><span class="version-tag">BUILD / 06</span></div>
-      <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>CAD and camera stay local</span><button id="open-project" class="quiet-button" aria-label="Open project" title="Reopen a Palmivo project JSON">${icon('open')}<span>Open project</span></button><button id="export-project" class="quiet-button" aria-label="Export project">${icon('export')}<span>Export project</span></button><input id="project-file" type="file" accept=".json,application/json" aria-label="Open Palmivo project JSON" hidden></div>
+      <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>CAD and camera stay local</span><button id="open-project" class="quiet-button" aria-label="Open project" title="Open JSON, STL or OBJ">${icon('open')}<span>Open project</span></button><button id="export-project" class="quiet-button" aria-label="Export project">${icon('export')}<span>Export project</span></button><input id="project-file" type="file" accept=".json,.stl,.obj,.mtl,application/json,model/stl,model/obj" aria-label="Open JSON, STL or OBJ with optional MTL" multiple hidden></div>
     </header>
     <main class="workspace">
-      <section class="workspace-heading"><div><div class="eyebrow">LOCAL SPATIAL WORKSPACE</div><h1>Shape with intent<span>.</span></h1><div class="example-actions"><button id="try-bushing" type="button" class="outline-button" disabled>Try the bushing</button><button id="try-camera" type="button" class="outline-button" disabled>Use my camera</button></div></div><div class="readiness" id="assets-status"><span class="readiness-icon">↻</span><div><strong>Preparing local assets</strong><span>Starting the CAD runtime</span></div></div></section>
+      <section class="workspace-heading"><div><div class="eyebrow">LOCAL SPATIAL WORKSPACE</div><h1>Shape with intent<span>.</span></h1><div class="example-actions"><button id="try-bushing" type="button" class="outline-button" disabled>Try the bushing</button><button id="try-camera" type="button" class="outline-button" disabled>Use my camera</button><button id="reset-scene" type="button" class="outline-button reset-button" disabled>${icon('reset')}<span>Reset workspace</span></button></div></div><div class="readiness" id="assets-status"><span class="readiness-icon">↻</span><div><strong>Preparing local assets</strong><span>Starting the CAD runtime</span></div></div></section>
       <div class="workspace-grid">
-        <aside class="tool-rail" aria-label="CAD tools"><div class="rail-label">TOOLS <span>01—08</span></div><div class="tool-list">${toolData.map(([tool,label,key,title]) => `${tool === 'select' || tool === 'undo' ? '<div class="tool-divider"></div>' : ''}<button class="tool-button" data-tool="${tool}" title="${title}" aria-label="${title}">${icon(tool)}<span>${label}</span><kbd>${key}</kbd></button>`).join('')}</div><div class="rail-bottom"><button data-tool="pause" class="tool-button pause-button">${icon('pause')}<span>Pause</span><kbd>␣</kbd></button><button id="reset-scene" class="reset-button">${icon('reset')}Reset workspace</button></div></aside>
+        <aside class="tool-rail" aria-label="CAD tools"><div class="rail-label">TOOLS <span>MODEL / EDIT</span></div><div class="tool-list"><div id="primary-shapes" class="primary-shapes">${toolData.slice(0, 2).map(toolButton).join('')}<button type="button" id="more-shapes" class="tool-button" aria-controls="shape-chooser" aria-expanded="false">${icon('shapes')}<span>More shapes</span><kbd>＋</kbd></button></div><div id="shape-chooser" class="shape-chooser" aria-label="More primitive shapes" hidden><button type="button" id="back-shapes" class="tool-button"><span aria-hidden="true">←</span><span>Back</span></button>${extraShapes.map(toolButton).join('')}</div>${toolData.slice(2).map(entry => `${entry[0] === 'select' || entry[0] === 'undo' ? '<div class="tool-divider"></div>' : ''}${toolButton(entry)}`).join('')}</div><div class="rail-bottom"><button data-tool="pause" class="tool-button pause-button">${icon('pause')}<span>Pause</span><kbd>␣</kbd></button></div></aside>
         <section class="stage-shell" aria-label="3D scene">
           <div class="stage-toolbar"><div><span class="stage-dot"></span><span>MODEL SPACE</span><span id="scene-revision" class="stage-revision">REV 000</span></div><div class="stage-options"><span id="solid-count">0 solids</span><span class="stage-separator">/</span><span>mm</span><span class="stage-view">PERSPECTIVE</span></div></div>
           <div class="viewport-wrap"><div id="viewport" class="viewport"></div><div class="viewport-label"><span class="corner-mark"></span>WORLD SPACE <span>XY / Z FIXED</span></div><div id="scene-objects" class="scene-objects" aria-label="Scene solids"></div><div id="empty-scene" class="empty-scene"><span class="empty-glyph">${icon('box')}</span><h2>A space for your next idea.</h2><p>Choose <strong>Box</strong> or <strong>Cylinder</strong> to start building.</p><span>GESTURE CONTROL OR MOUSE & KEYBOARD</span></div><div class="scene-axis" aria-hidden="true"><span class="axis-y">Y</span><span class="axis-x">X</span><span class="axis-z">Z</span><i></i></div><div id="draft-badge" class="draft-badge" hidden><span></span>DRAFT PREVIEW</div></div>
@@ -128,7 +139,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
       </div>
       <footer class="diagnostics"><div class="diagnostic-label"><span class="status-dot"></span>LIVE DIAGNOSTICS</div><div class="metric"><span>CAMERA</span><strong data-metric="camera">— fps</strong></div><div class="metric"><span>TRACKING</span><strong data-metric="tracking">— fps</strong></div><div class="metric"><span>RENDER</span><strong data-metric="render">— fps</strong></div><div class="metric"><span>LANDMARKS</span><strong data-metric="landmark">— ms</strong></div><div class="metric"><span>RULES → AST</span><strong data-metric="compiler">— ms</strong></div><div class="metric"><span>GEOMETRY</span><strong data-metric="geometry">— ms</strong></div><button id="metrics-export" title="Export measured performance" aria-label="Export measured performance">${icon('export')}</button></footer>
       <div class="page-footnote"><span>Spatial gesture prototype. Scene dimensions are illustrative, not physical measurements.</span><span>COMPILE SOMETHING TANGIBLE.</span></div>
-    </main><div id="gesture-cursor" class="gesture-cursor" hidden><span></span></div><dialog id="project-review" class="project-review" aria-labelledby="project-review-title" aria-describedby="project-review-description"><form method="dialog"><div class="eyebrow">LOCAL PROJECT</div><h2 id="project-review-title">Replace this workspace?</h2><p id="project-review-description">Opening a project replaces the current scene. Export your current project first if you want to keep it.</p><div class="project-review-file"><strong id="project-review-filename"></strong><span id="project-review-summary"></span></div><p class="project-review-note">Only the saved geometry and command history are restored. Your hand calibration stays the same.</p><div class="project-review-actions"><button value="cancel" class="cancel-button" autofocus>Keep current scene</button><button value="replace" class="commit-button">Open saved project</button></div></form></dialog>`;
+    </main><div id="gesture-cursor" class="gesture-cursor" hidden><span></span></div><dialog id="project-review" class="project-review" aria-labelledby="project-review-title" aria-describedby="project-review-description"><form method="dialog"><div class="eyebrow">LOCAL PROJECT</div><h2 id="project-review-title">Replace this workspace?</h2><p id="project-review-description">Opening a project replaces the current scene. Export your current project first if you want to keep it.</p><div class="project-review-file"><strong id="project-review-filename"></strong><span id="project-review-summary"></span></div><p class="project-review-note">Only the saved geometry and command history are restored. Your hand calibration stays the same.</p><div class="project-review-actions"><button value="cancel" class="cancel-button" data-gesture="keep-scene" autofocus>Keep current scene</button><button value="replace" class="commit-button" data-gesture="open-saved">Open saved project</button></div></form></dialog>`;
 
   const references = new Map<string, HTMLElement>();
   const q = <T extends HTMLElement>(selector: string): T => {
@@ -139,6 +150,14 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   const text = (element: HTMLElement, value: string) => { if (element.textContent !== value) element.textContent = value; };
   const paletteButtons = new Map<Tool, HTMLButtonElement>();
   root.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach(button => paletteButtons.set(button.dataset.tool as Tool, button));
+  const moreShapes = q<HTMLButtonElement>('#more-shapes');
+  const backShapes = q<HTMLButtonElement>('#back-shapes');
+  const showShapes = (open: boolean) => {
+    q('#primary-shapes').hidden = open; q('#shape-chooser').hidden = !open;
+    moreShapes.setAttribute('aria-expanded', String(open));
+  };
+  moreShapes.addEventListener('click', () => { if (!moreShapes.disabled) showShapes(true); });
+  backShapes.addEventListener('click', () => showShapes(false));
   const sizePresetButtons = new Map<string, HTMLButtonElement>();
   const transformStepButtons = new Map<string, HTMLButtonElement>();
   const transformPanel = document.createElement('div');
@@ -152,18 +171,31 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     transformPanel.append(button); transformStepButtons.set(step.key, button);
   }
   q('#export-stl').before(transformPanel);
+  const stlExport = q<HTMLButtonElement>('#export-stl');
+  const objExport = document.createElement('button');
+  objExport.id = 'export-obj';
+  objExport.className = stlExport.className;
+  objExport.type = 'button';
+  objExport.disabled = true;
+  objExport.setAttribute('aria-label', 'Export selected solid as OBJ');
+  objExport.innerHTML = `${icon('export')}<span>Export OBJ</span>`;
+  const meshExports = document.createElement('div');
+  meshExports.className = 'mesh-export-actions';
+  stlExport.before(meshExports);
+  stlExport.querySelector('small')?.remove();
+  meshExports.append(stlExport, objExport);
   const presetsPanel = document.createElement('section');
   presetsPanel.className = 'size-presets'; presetsPanel.hidden = true;
   presetsPanel.setAttribute('aria-label', 'Precise creation sizes');
   presetsPanel.innerHTML = `<div class="section-heading"><h3>Precise size</h3><span>mm</span></div><div id="preset-dimensions" class="preset-dimensions"></div>`;
-  for (const primitive of ['Box', 'Cylinder'] as const) {
+  for (const primitive of ['Box', 'Cylinder', 'Sphere', 'Cone', 'Pyramid'] as const) {
     const group = document.createElement('div');
     group.className = 'preset-group'; group.dataset.primitive = primitive; group.hidden = true;
-    const fields = primitive === 'Box' ? ['x', 'y', 'z'] : ['radius', 'height'];
+    const fields = primitive === 'Box' ? ['x', 'y', 'z'] : primitive === 'Sphere' ? ['radius'] : primitive === 'Pyramid' ? ['base', 'height'] : ['radius', 'height'];
     for (const field of fields) {
       const row = document.createElement('div'); row.className = 'preset-row';
       const label = document.createElement('span'); label.className = 'preset-field';
-      label.textContent = field.length === 1 ? field.toUpperCase() : field === 'radius' ? 'Radius' : 'Height';
+      label.textContent = field.length === 1 ? field.toUpperCase() : field === 'radius' ? 'Radius' : field === 'base' ? 'Base' : 'Height';
       row.append(label);
       for (const preset of SIZE_PRESETS.filter(p => p.primitive === primitive && p.field === field)) {
         const button = document.createElement('button');
@@ -214,6 +246,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     if (!state) return 'Choose a primitive to begin.';
     if (tuningActivation.value === 'one-hand' && (state.draft?.kind === 'scale' || state.draft?.kind === 'move')) return 'Hold over a precise adjustment. Move off buttons to rearm. Commit applies; Cancel restores.';
     if (state.draft?.kind === 'create') return 'Choose exact sizes below, then Commit to create your solid. Cancel discards the preview.';
+    if (state.draft?.kind === 'import') return 'Check the imported part in the viewport. Commit adds it to the scene.';
     if (state.draft?.kind === 'subtract') {
       const draft = state.draft;
       const target = state.scene.solids.find(s => s.id === draft.targetId)?.name ?? draft.targetId;
@@ -271,28 +304,32 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     for (const [tool, button] of paletteButtons) {
       const hasSelection = !!state.selectedId;
       const isBooleanTool = tool === 'subtract' || tool === 'union';
-      button.disabled = tool === 'pause' ? state.busy : tool === 'cancel' ? !state.draft || state.busy : tool === 'commit' ? !state.draft || state.busy || state.paused || incompleteBoolean : state.busy || state.paused || !!state.draft || ((tool === 'move' || tool === 'scale' || isBooleanTool) && !hasSelection) || (isBooleanTool && state.scene.solids.length < 2) || (tool === 'undo' && !state.historyCount) || (['box', 'cylinder'].includes(tool) && state.scene.solids.length >= 10);
+      button.disabled = tool === 'pause' ? state.busy : tool === 'cancel' ? !state.draft || state.busy : tool === 'commit' ? !state.draft || state.busy || state.paused || incompleteBoolean : state.busy || state.paused || !!state.draft || ((tool === 'move' || tool === 'scale' || isBooleanTool) && !hasSelection) || (isBooleanTool && state.scene.solids.length < 2) || (tool === 'undo' && !state.historyCount) || (['box', 'cylinder', 'sphere', 'cone', 'pyramid'].includes(tool) && state.scene.solids.length >= 10);
       button.classList.toggle('is-active', tool === selectedTool);
       button.setAttribute('aria-pressed', String(tool === selectedTool));
     }
+    moreShapes.disabled = state.busy || state.paused || !!state.draft || state.scene.solids.length >= 10;
+    backShapes.disabled = state.busy;
+    if (state.draft) showShapes(false);
     const pause = paletteButtons.get('pause')!;
     text(pause.querySelector<HTMLElement>('span')!, state.paused ? 'Resume' : 'Pause');
     const open = q<HTMLButtonElement>('#open-project');
     open.disabled = state.busy || !!state.draft;
     q<HTMLButtonElement>('#try-bushing').disabled = open.disabled;
-    open.title = state.busy ? 'Wait for the current geometry operation to finish' : state.draft ? 'Commit or Cancel the current draft before opening a project' : 'Reopen a Palmivo project JSON';
-    const stlExport = q<HTMLButtonElement>('#export-stl');
+    open.title = state.busy ? 'Wait for the current geometry operation to finish' : state.draft ? 'Commit or Cancel the current draft before opening a project' : 'Open a Palmivo JSON project or import an STL or OBJ solid';
     const transform = state.draft?.kind === 'scale' || state.draft?.kind === 'move' ? state.draft : null;
     transformPanel.hidden = !transform;
     transformPanel.classList.toggle('is-move', transform?.kind === 'move');
-    stlExport.hidden = !!transform;
+    meshExports.hidden = !!transform;
     for (const step of TRANSFORM_STEPS) {
       const button = transformStepButtons.get(step.key)!;
       button.hidden = transform?.kind !== step.kind;
       button.disabled = !transform || state.busy || state.paused;
     }
-    stlExport.disabled = state.busy || state.paused || !!state.draft || !selectedMeasurement || selectedMeasurement.id !== state.selectedId;
-    stlExport.title = state.busy ? 'Wait for geometry execution to finish' : state.draft ? 'Commit or Cancel the preview before exporting STL' : state.paused ? 'Resume editing before exporting STL' : !selectedMeasurement ? 'Select a committed solid to export' : 'Export the selected committed surface with coordinates in millimetres. Keep project JSON for editable history.';
+    for (const button of [stlExport, objExport]) {
+      button.disabled = state.busy || state.paused || !!state.draft || !selectedMeasurement || selectedMeasurement.id !== state.selectedId;
+      button.title = state.busy ? 'Wait for geometry execution to finish' : state.draft ? 'Commit or Cancel the preview before exporting' : state.paused ? 'Resume editing before exporting' : !selectedMeasurement ? 'Select a committed solid to export' : 'Export the selected committed surface with coordinates in millimetres.';
+    }
     const create = state.draft?.kind === 'create' ? state.draft : null;
     presetsPanel.hidden = !create;
     q('.inspector').classList.toggle('is-create-draft', !!create);
@@ -301,12 +338,15 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     for (const preset of SIZE_PRESETS) {
       const button = sizePresetButtons.get(preset.key)!;
       const activeValue = recipe?.kind === 'box' && preset.primitive === 'Box' ? recipe.dimensions[preset.field === 'x' ? 0 : preset.field === 'y' ? 1 : 2]
-        : recipe?.kind === 'cylinder' && preset.primitive === 'Cylinder' ? recipe[preset.field] : undefined;
+        : recipe?.kind === 'cylinder' && preset.primitive === 'Cylinder' ? recipe[preset.field]
+        : recipe?.kind === 'sphere' && preset.primitive === 'Sphere' ? recipe.radius
+        : recipe?.kind === 'cone' && preset.primitive === 'Cone' ? recipe[preset.field]
+        : recipe?.kind === 'pyramid' && preset.primitive === 'Pyramid' ? recipe[preset.field] : undefined;
       const pressed = String(activeValue === preset.value);
       if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed', pressed);
       button.disabled = !create || state.busy || state.paused;
     }
-    text(q('#preset-dimensions'), recipe?.kind === 'box' ? `${recipe.dimensions.join(' × ')} mm` : recipe?.kind === 'cylinder' ? `R ${recipe.radius} × H ${recipe.height} mm` : '');
+    text(q('#preset-dimensions'), recipe?.kind === 'box' ? `${recipe.dimensions.join(' × ')} mm` : recipe?.kind === 'sphere' ? `R ${recipe.radius} mm` : recipe?.kind === 'cylinder' || recipe?.kind === 'cone' ? `R ${recipe.radius} × H ${recipe.height} mm` : recipe?.kind === 'pyramid' ? `Base ${recipe.base} × H ${recipe.height} mm` : '');
   };
 
   return {
@@ -317,7 +357,9 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     tryBushingButton: q<HTMLButtonElement>('#try-bushing'),
     calibrateButton: q<HTMLButtonElement>('#calibrate-button'),
     exportButton: q<HTMLButtonElement>('#export-project'),
-    stlExportButton: q<HTMLButtonElement>('#export-stl'),
+    stlExportButton: stlExport,
+    objExportButton: objExport,
+    meshExports,
     openProjectButton: q<HTMLButtonElement>('#open-project'),
     projectFileInput: q<HTMLInputElement>('#project-file'),
     reviewProject(filename, solids, commands, example = false) {
@@ -454,6 +496,8 @@ export function createUI(root: HTMLElement): WorkspaceUI {
       if (!active) { cursor.hidden = true; video.srcObject = null; }
     },
     setGestureCursor(x, y, visible, armed) {
+      const cursorHost = document.querySelector('dialog[open]') ?? root;
+      if (cursor.parentElement !== cursorHost) cursorHost.append(cursor);
       cursor.hidden = !visible;
       cursor.style.transform = `translate3d(${x}px,${y}px,0)`;
       cursor.classList.toggle('is-armed', armed);
@@ -493,7 +537,17 @@ export function createUI(root: HTMLElement): WorkspaceUI {
 
 function draftAST(draft: Draft): unknown {
   switch (draft.kind) {
-    case 'create': return { type: 'Create', objectId: draft.solid.id, primitive: draft.solid.recipe.kind === 'box' ? 'Box' : 'Cylinder', dimensions: draft.solid.recipe.kind === 'box' ? draft.solid.recipe.dimensions : draft.solid.recipe.kind === 'cylinder' ? [draft.solid.recipe.radius, draft.solid.recipe.height] : [], position: draft.solid.position };
+    case 'import': return draft.solid.recipe.kind === 'mesh'
+      ? { type: 'ImportMesh', objectId: draft.solid.id, assetId: draft.solid.recipe.assetId } : null;
+    case 'create': {
+      const recipe = draft.solid.recipe;
+      const shape = recipe.kind === 'box' ? { primitive: 'Box', dimensions: recipe.dimensions }
+        : recipe.kind === 'cylinder' ? { primitive: 'Cylinder', dimensions: [recipe.radius, recipe.height] }
+        : recipe.kind === 'sphere' ? { primitive: 'Sphere', dimensions: [recipe.radius] }
+        : recipe.kind === 'cone' ? { primitive: 'Cone', dimensions: [recipe.radius, recipe.height] }
+        : recipe.kind === 'pyramid' ? { primitive: 'Pyramid', dimensions: [recipe.base, recipe.height] } : null;
+      return { type: 'Create', objectId: draft.solid.id, ...shape, position: draft.solid.position };
+    }
     case 'move': return { type: 'Move', targetId: draft.targetId, position: draft.position };
     case 'scale': return { type: 'Scale', targetId: draft.targetId, uniformScale: draft.uniformScale };
     case 'subtract': return { type: 'Subtract', targetId: draft.targetId, cutterId: draft.cutterId ?? '(choose cutter)', resultId: draft.resultId };

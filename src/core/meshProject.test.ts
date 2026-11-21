@@ -1,0 +1,116 @@
+import { beforeAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { Box3 } from 'three';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import type { ManifoldToplevel } from 'manifold-3d';
+import { buildMesh, initializeKernel } from '../geometry/kernel';
+import { Controller } from './controller';
+import { makeMeshAsset, unpackMeshAsset, verifyAssetId } from './meshAsset';
+import { parseProjectFile } from './projectFile';
+import { exportSolidSTL } from './stlExport';
+import { exportSolidOBJ } from './meshFile';
+import { parseMeshBytes } from './meshParsing';
+import type { GeometryAdapter, ImportedMesh } from '../shared/types';
+
+let kernel: ManifoldToplevel;
+let imported: ImportedMesh;
+const geometry: GeometryAdapter = { build: async (recipe, assets) => buildMesh(kernel, recipe, assets) };
+beforeAll(async () => {
+  const path = decodeURIComponent(new URL('../../node_modules/manifold-3d/manifold.wasm', import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, '$1');
+  kernel = await initializeKernel(path);
+  const mesh = buildMesh(kernel, { kind: 'box', dimensions: [20, 20, 20] });
+  const asset = await makeMeshAsset(mesh.positions, mesh.indices);
+  imported = { asset, mesh, dimensions: [20, 20, 20] };
+});
+describe('editable imported solids', () => {
+  it('imports the actual bushing STL, scales it, and reimports its OBJ with the original bore topology', async () => {
+    const source = Uint8Array.from(readFileSync(new URL('../../examples/flanged-guide-bushing-mm.stl', import.meta.url)));
+    const initial = parseMeshBytes(source.buffer, 'stl', 'mm');
+    const asset = await makeMeshAsset(initial.positions, initial.indices);
+    const mesh = buildMesh(kernel, { kind: 'mesh', assetId: asset.id }, [asset]);
+    const controller = new Controller(geometry);
+    controller.beginImport('guide.stl', { asset, mesh, dimensions: [20, 20, 40] });
+    expect(await controller.commit()).toBe(true);
+    controller.beginScale(); controller.updateScale(1.1); await controller.commit();
+    const output = exportSolidOBJ(controller.state.scene.solids[0], mesh);
+    const bounds = new Box3().setFromObject(new OBJLoader().parse(output.data));
+    expect(bounds.min.toArray()).toEqual([-11, -11, -22]);
+    expect(bounds.max.toArray()).toEqual([11, 11, 22]);
+    const decoded = parseMeshBytes(new TextEncoder().encode(output.data).buffer, 'obj', 'mm');
+    const reimported = await makeMeshAsset(decoded.positions, decoded.indices);
+    const rebuilt = buildMesh(kernel, { kind: 'mesh', assetId: reimported.id }, [reimported]);
+    expect(rebuilt.volume).toBeCloseTo(mesh.volume * 1.1 ** 3, 1);
+    const shape = kernel.Manifold.ofMesh(new kernel.Mesh({ numProp: 3, vertProperties: rebuilt.positions, triVerts: rebuilt.indices }));
+    try { expect(shape.genus()).toBe(1); }
+    finally { shape.delete(); }
+  });
+  it('roundtrips the exact buffers with a reproducible content ID and closed solid volume', async () => {
+    const { positions, indices } = unpackMeshAsset(imported.asset);
+    expect(positions).toEqual(imported.mesh.positions);
+    expect(indices).toEqual(imported.mesh.indices);
+    expect((await makeMeshAsset(positions, indices)).id).toBe(imported.asset.id);
+    const rebuilt = buildMesh(kernel, { kind: 'mesh', assetId: imported.asset.id }, [imported.asset]);
+    expect(rebuilt.volume).toBeCloseTo(8000);
+  });
+  it('cancels an import preview without changing the project or retaining its mesh', () => {
+    const controller = new Controller(geometry);
+    const before = controller.exportDocument();
+    expect(controller.beginImport('Model.stl', imported)).toBe(true);
+    expect(controller.getDraftAST()).toMatchObject({ type: 'ImportMesh', assetId: imported.asset.id });
+    expect(controller.meshes.size).toBe(1);
+    expect(controller.exportDocument()).toEqual(before);
+    controller.cancel();
+    expect(controller.meshes.size).toBe(0);
+    expect(controller.exportDocument()).toEqual(before);
+  });
+  it('reuses an immutable stored asset across solids and restores a nested Boolean after reopening', async () => {
+    const controller = new Controller(geometry);
+    controller.beginImport('box.stl', imported);
+    expect(await controller.commit()).toBe(true);
+    const first = controller.state.selectedId!;
+    controller.beginImport('second.obj', imported);
+    expect(await controller.commit()).toBe(true);
+    const second = controller.state.selectedId!;
+    expect(controller.state.scene.assets).toHaveLength(1);
+    controller.beginMove(); controller.updateMove([10, 0, 0]); await controller.commit();
+    controller.select(first); controller.beginUnion(); controller.chooseUnionOperand(second);
+    expect(await controller.commit()).toBe(true);
+    const joined = controller.state.selectedId!;
+    expect(controller.meshes.get(joined)?.volume).toBeCloseTo(12000);
+    controller.beginCreate('Cylinder'); await controller.commit();
+    const cutter = controller.state.selectedId!;
+    controller.select(joined); controller.beginSubtract(); controller.chooseCutter(cutter);
+    expect(await controller.commit()).toBe(true);
+    controller.beginScale(); controller.updateScale(1.5); await controller.commit();
+    const saved = controller.exportDocument();
+    expect(saved.schemaVersion).toBe(3);
+    expect(saved.assets).toHaveLength(1);
+    const reopened = new Controller(geometry);
+    expect(await reopened.restore(parseProjectFile(JSON.stringify(saved)))).toBe(true);
+    const solid = reopened.state.scene.solids[0];
+    const output = exportSolidSTL(solid, reopened.meshes.get(solid.id)!);
+    expect(output.measurements.dimensions).toEqual([45, 30, 30]);
+    expect(output.measurements.volume).toBeGreaterThan(30000);
+    controller.undo(); controller.undo();
+    expect(controller.state.scene.solids.map(s => s.id)).toEqual([joined, cutter]);
+    controller.undo(); controller.undo();
+    expect(controller.state.scene.solids.map(s => s.id)).toEqual([first, second]);
+  });
+  it('rejects missing assets, altered project buffers, invalid topology and excessive vertex indices', async () => {
+    const controller = new Controller(geometry);
+    controller.beginImport('valid.stl', imported); await controller.commit();
+    const before = controller.exportDocument();
+    const missing = { ...before, assets: [] };
+    expect(() => parseProjectFile(JSON.stringify(missing))).toThrow(/missing mesh asset/i);
+    const changed = { ...imported.asset, positions: (imported.asset.positions[0] === 'A' ? 'B' : 'A') + imported.asset.positions.slice(1) };
+    await expect(verifyAssetId(changed)).rejects.toThrow(/contents/);
+    expect(await controller.restore({ ...before, assets: [changed] })).toBe(false);
+    expect(controller.exportDocument()).toEqual(before);
+    const open = await makeMeshAsset(imported.mesh.positions, imported.mesh.indices.slice(3));
+    expect(() => buildMesh(kernel, { kind: 'mesh', assetId: open.id }, [open])).toThrow();
+    const broken = imported.mesh.indices.slice();
+    broken[0] = 99999;
+    const bad = await makeMeshAsset(imported.mesh.positions, broken);
+    expect(() => unpackMeshAsset(bad)).toThrow(/indices/);
+  });
+});

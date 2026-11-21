@@ -10,13 +10,12 @@ Palmivo turns webcam hand input into editable CAD operations. Users create solid
 
 - **Two-hand gesture control:** a mirrored cursor, stable button targeting, pinch selection, XY dragging, and continuous uniform scaling.
 - **One-hand dwell:** command access without pinching or raising the other hand, with comfortable-range calibration and precise Move/Scale buttons.
-- **Solid modelling:** boxes, cylinders, selection, translation, scaling, and target-minus-cutter subtraction.
-- **Boolean Union:** fuse two committed solids into one through the same validated preview and Commit workflow. Union projects use format version 2. Version 1 projects remain readable.
+- **Solid modelling:** Box, Cylinder, Sphere, Cone and Square Pyramid, with selection, planar translation, uniform scaling, Union and Subtract.
 - **Exact dimensions:** independent primitive presets, final mesh measurements, 1 mm XY steps, and 0.1× scale steps.
 - **Explicit transactions:** separate Commit and Cancel, reversible previews, Pause, and a 20-snapshot Undo history.
 - **Inspectable compilation:** draft and committed ASTs, resolved object references, numeric validation, and scene revision checks.
-- **Editable projects:** IndexedDB autosave and versioned JSON export/reopening with recipes, transforms, and command history.
-- **STL handoff:** binary STL export of the selected committed solid with millimetre coordinates.
+- **Editable projects:** IndexedDB autosave and versioned JSON export and reopening with recipes, transforms, embedded mesh assets and command history.
+- **STL and OBJ exchange:** add a closed mesh to the scene, move or scale it, use it in a Boolean, and export the committed result in millimetres.
 - **Inspect aloud:** the hosted workbench can send the selected STL to Render Workflows for an independent mesh check and speak the measured result with ElevenLabs. A camera-optional bushing example opens directly in the workbench.
 - **Local execution:** bundled tracking models, JavaScript, and WASM. Camera processing and project storage stay on the device.
 - **Performance instrumentation:** camera and tracking rates, stage timings, a repeatable benchmark, and JSON measurement export.
@@ -40,7 +39,9 @@ flowchart LR
     Geometry --> Scene[Committed scene]
     Scene --> View[Three.js viewport]
     Scene --> Storage[IndexedDB and project JSON]
-    Scene --> Export[Binary STL]
+    Files[Local STL or OBJ] --> Import[Mesh validation worker]
+    Import --> Controller
+    Scene --> Export[STL or OBJ]
 ~~~
 
 One controller owns scene state. Every input method uses the same command path. Tracking keeps one image bitmap in flight and retains only the newest waiting frame metadata. CAD rendering has a 60 FPS budget and reuses static shadow maps. Move/Scale previews update transforms immediately while inspector work is coalesced.
@@ -55,7 +56,7 @@ One controller owns scene state. Every input method uses the same command path. 
 | Persistence | IndexedDB and versioned project JSON |
 | Verification | Vitest, independent STL readers, browser QA |
 
-The geometry AST contains `Create`, `Move`, `Scale`, `Union`, and `Subtract`. Selection, Commit, Cancel, Pause, and Undo remain controller events.
+The geometry AST contains `Create`, `ImportMesh`, `Move`, `Scale`, `Union`, and `Subtract`. Selection, Commit, Cancel, Pause, and Undo are controller events.
 
 ~~~json
 {
@@ -119,6 +120,7 @@ Dwell activates ordinary controls after 900 ms and Commit after 1,200 ms. Move o
 | Operation | Keyboard / pointer |
 | --- | --- |
 | Box / Cylinder | `B` / `C` |
+| Sphere / Cone / Square Pyramid | **More shapes** in the toolbar |
 | Select | `V`, then click a solid or object-list entry |
 | Move | `M`, then drag or use 1 mm XY buttons |
 | Scale | `S`, then scroll, press `+` / `-`, or use 0.1× buttons |
@@ -137,12 +139,16 @@ The inspector displays **Final size**, **Preview size**, or **Target size** for 
 
 Enable the camera, select the pointer hand, and calibrate the comfortable movement range. Pinch mode also calibrates three pinch/release cycles and checks the other palm. Use **Test click** before editing. Input settings and mapping persist locally.
 
+While listening, briefly relax the pointer hand before making a shortcut. Palmivo clears partial recognition when the pointer hand leaves view. Expand **Gesture rehearsal** in the runtime panel to record labelled local attempts or try adaptive pointer smoothing and brief thumbs-up tolerance. The trace records event timings and model scores for comparing settings.
+
 ### Projects and exports
 
-Existing project JSON, saved scenes, and calibration continue to load.
-
-- **Export project / Open project:** preserve editable recipes, transforms, and committed AST history in versioned JSON.
-- **Export STL:** save the selected committed solid with its position and scale applied. Import the coordinates as millimetres in a viewer or slicer.
+- **Open project** accepts Palmivo JSON, binary or ASCII STL, and polygonal OBJ. JSON restores a saved scene. For a mesh, confirm the source units, review the preview, and choose **Commit** to add a solid to the workspace. Closed meshes support Move, Scale, Union, Subtract and Undo.
+- Mesh import accepts files up to 4 MiB and 40,000 triangles per part. Choose millimetres, centimetres or inches to match the source coordinates. Versioned Palmivo project files have an 8 MiB limit.
+- **Export project** preserves editable recipes, transforms, imported mesh assets and the committed AST in JSON. New primitives and mesh imports use version 3. The reader supports versions 1 and 2.
+- **Export STL / Export OBJ** saves the selected committed solid with its position and scale applied. Set the receiving tool to millimetres.
+- **Mesh colours** appear in import previews and persist in Palmivo JSON. OBJ accepts embedded vertex RGB or diffuse colours from a matching MTL. Select the OBJ and MTL together in the file picker, or keep them together in the folder you approved for gesture input. OBJ export embeds RGB. Binary STL export uses Magics colour attributes.
+- The gesture pointer can activate **Reset workspace**, **Open project**, and all three export buttons. In Chrome or Edge, open the project list with a gesture, choose **Choose folder**, and grant read access using the browser prompt. Palmivo can then list JSON, STL and OBJ files in that folder for gesture selection. The browser may ask for access again when its permission expires.
 - **Snapshot:** save the CAD viewport as PNG.
 - **Record demo:** save the CAD canvas and AST as WebM, excluding webcam imagery and audio.
 - **Export result:** save the completed benchmark with settings, stage timings, and sample counts.

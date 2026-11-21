@@ -1,6 +1,7 @@
 import { TsmRuntime } from './runtime';
 import { TsmCadence } from './cadence';
 import { TSM_MAX_GAP_MS, TSM_SHORTCUTS, TsmShortcutGate, type TsmTool } from './shortcuts';
+import { gestureTrace } from '../tracking/gestureTrace';
 
 type Mode = 'rules' | 'loading' | 'listening';
 interface Options {
@@ -36,7 +37,7 @@ export function mountTsmTools(toolbar: HTMLElement, runtimePanel: HTMLElement, o
   const status = panel.querySelector<HTMLElement>('#tsm-status')!;
   const badge = panel.querySelector<HTMLElement>('#tsm-mode')!;
   const runtime = new TsmRuntime();
-  const gate = new TsmShortcutGate();
+  let gate = new TsmShortcutGate();
   const cadence = new TsmCadence();
   let mode: Mode = 'rules';
   let generation = 0;
@@ -44,12 +45,15 @@ export function mountTsmTools(toolbar: HTMLElement, runtimePanel: HTMLElement, o
   let lastSample = -Infinity;
   let deadline: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
+  let evidenceBlocked = false;
+  let pointerEpoch = 0;
 
   function show(message: string): void {
     if (status.textContent !== message) status.textContent = message;
     if (mode !== 'listening') return;
     const label = message.startsWith('Listening. Relax') ? 'Relax your hand' :
-      message.includes('Checking stability') ? 'Recognizing…' :
+      message.includes('Checking stability') ? message.split(' detected.')[0] :
+      message.startsWith('Show your pointer hand') ? 'Show your pointer hand' :
       message.startsWith('Union needs') ? 'Swipe for a tool' : 'Make a shortcut';
     if (hint.textContent !== label) hint.textContent = label;
   }
@@ -77,6 +81,7 @@ export function mountTsmTools(toolbar: HTMLElement, runtimePanel: HTMLElement, o
 
   function stop(message = 'Gesture palette ready.'): void {
     if (mode === 'rules') return;
+    if (gestureTrace.recording) gestureTrace.event('stop', performance.now(), { reason: message });
     generation++;
     if (deadline !== null) clearTimeout(deadline);
     deadline = null;
@@ -97,6 +102,16 @@ export function mountTsmTools(toolbar: HTMLElement, runtimePanel: HTMLElement, o
     show('Enable the camera to listen for one shortcut.');
   }
 
+  function pointerLost(): void {
+    if (mode !== 'listening' || evidenceBlocked) return;
+    pointerEpoch++;
+    gate.reset();
+    lastSample = -Infinity;
+    evidenceBlocked = true;
+    if (gestureTrace.recording) gestureTrace.event('evidence-reset', performance.now(), { reason: 'pointer unavailable' });
+    show('Show your pointer hand, then relax briefly.');
+  }
+
   async function preload(): Promise<void> {
     if (disposed || mode !== 'rules' || runtime.loaded) return;
     const attempt = generation;
@@ -114,6 +129,7 @@ export function mountTsmTools(toolbar: HTMLElement, runtimePanel: HTMLElement, o
   async function arm(): Promise<void> {
     if (disposed || mode !== 'rules' || !options.canListen()) return;
     const attempt = ++generation;
+    if (gestureTrace.recording) gestureTrace.event('listen-request', performance.now(), { modelLoaded: runtime.loaded });
     status.removeAttribute('title');
     try {
       if (!runtime.loaded) {
@@ -126,10 +142,12 @@ export function mountTsmTools(toolbar: HTMLElement, runtimePanel: HTMLElement, o
         stop('Listening ended. Return to the workspace and try again.');
         return;
       }
-      gate.reset();
+      gate = new TsmShortcutGate(gestureTrace.tolerantThumb);
+      evidenceBlocked = false;
       cadence.reset();
       lastSample = -Infinity;
       setMode('listening');
+      if (gestureTrace.recording) gestureTrace.event('arm', performance.now());
       show('Listening. Relax your hand briefly, then make a shortcut.');
       deadline = setTimeout(() => stop('Listening timed out. Try again or choose a tool from the palette.'), LISTEN_MS);
     } catch (error) {
@@ -141,10 +159,13 @@ export function mountTsmTools(toolbar: HTMLElement, runtimePanel: HTMLElement, o
   }
 
   function sample(video: HTMLVideoElement, timestamp: number, mediaTimeSeconds: number): void {
-    if (mode !== 'listening' || !options.canListen() || capturing || runtime.processing ||
-        video.readyState < 2 || !cadence.take(mediaTimeSeconds)) return;
+    if (mode !== 'listening' || !options.canListen()) return;
+    if (!options.canAccept()) { pointerLost(); return; }
+    if (capturing || runtime.processing || video.readyState < 2 || !cadence.take(mediaTimeSeconds)) return;
     const attempt = generation;
     const started = performance.now();
+    evidenceBlocked = false;
+    const sampleEpoch = pointerEpoch;
     const reset = timestamp - lastSample > TSM_MAX_GAP_MS;
     lastSample = timestamp;
     capturing = true;
@@ -159,27 +180,32 @@ export function mountTsmTools(toolbar: HTMLElement, runtimePanel: HTMLElement, o
       if (attempt !== generation || mode !== 'listening' || !options.canListen()) return;
       // Throw away late inferences before they enter the stability gate.
       if (performance.now() - result.timestamp > TSM_MAX_GAP_MS) {
+        if (gestureTrace.recording) gestureTrace.event('evidence-reset', performance.now(), { reason: 'late inference' });
         gate.reset();
         cadence.reset();
         lastSample = -Infinity;
         return;
       }
       const decisionStart = performance.now();
-      const decision = gate.step(result.logits, result.timestamp, options.unionAvailable());
+      const pointerAvailable = sampleEpoch === pointerEpoch && options.canAccept();
+      const unionAvailable = options.unionAvailable();
+      const decision = pointerAvailable ? gate.step(result.logits, result.timestamp, unionAvailable) : null;
       options.onTiming({
         captureMs, preprocessMs: result.preprocessMs, inferenceMs: result.inferenceMs,
         roundTripMs: performance.now() - started, decisionMs: performance.now() - decisionStart,
       });
+      if (!decision) {
+        pointerLost();
+        return;
+      }
+      evidenceBlocked = false;
+      gestureTrace.prediction(result.timestamp, result.logits, decision, unionAvailable);
       if (decision.accepted) {
         const { tool, label } = decision.accepted;
-        if (!options.canAccept()) {
-          gate.reset();
-          lastSample = -Infinity;
-          show('Listening. Relax your hand briefly, then make a shortcut.');
-          return;
-        }
         stop(`${label} recognized. Review the draft before committing.`);
-        if (!options.onOpenDraft(tool)) {
+        const opened = options.onOpenDraft(tool);
+        if (gestureTrace.recording) gestureTrace.event('draft-result', performance.now(), { tool, opened });
+        if (!opened) {
           show(tool === 'union' ? 'Select the first solid and make sure there is a second solid before requesting Union.' : `Could not open ${label}. Check the workspace and try again.`);
         }
       } else if (decision.unionUnavailable) {
@@ -206,7 +232,7 @@ export function mountTsmTools(toolbar: HTMLElement, runtimePanel: HTMLElement, o
   });
   setMode('rules');
   return {
-    button, refresh, sample, stop, preload, release, mode: () => mode,
+    button, refresh, sample, stop, preload, release, pointerLost, mode: () => mode,
     dispose() {
       disposed = true;
       release();
