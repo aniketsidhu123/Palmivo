@@ -1,17 +1,17 @@
 .example-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .example-actions .outline-button { min-height: 34px; font-size: 12px; }
-#try-bushing { background: #223f39; border-color: #678d78; color: #def6df; }
-#try-bushing:hover:not(:disabled) { background: #31574a; }
-.inspection-panel { margin-top: 6px; color: #c1d5d7; font-size: 11px; line-height: 1.5; }
+#try-bushing { background: #203e41; border-color: #648c90; color: #dcf6f8; }
+#try-bushing:hover:not(:disabled) { background: #2e565a; }
+.inspection-panel { margin-top: 6px; color: #c5c6d3; font-size: 11px; line-height: 1.5; }
 .inspector:has(.inspection-panel:not([hidden])) { overflow-y: auto; scrollbar-width: thin; }
 .inspection-panel > p, .inspection-result p, .inspection-privacy p { margin: 5px 0 0; }
 .inspection-panel .stl-export-button { margin-top: 0; }
 .inspection-privacy { margin-top: 3px; }
 .inspection-privacy summary { width: fit-content; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-#inspection-status { color: #d8efe5; }
-.inspection-result { margin-top: 8px; padding: 9px; border: 1px solid #486b67; border-radius: 4px; background: #102a2b; }
-#inspection-revision, #inspection-facts, #inspection-run, #inspection-latency { color: #adc8c8; font: 10px / 1.5 var(--mono); }
-#inspection-caption { color: #edf7ee; font-size: 12px; }
+#inspection-status { color: #d6eff1; }
+.inspection-result { margin-top: 8px; padding: 9px; border: 1px solid #494b5e; border-radius: 4px; background: #131523; }
+#inspection-revision, #inspection-facts, #inspection-run, #inspection-latency { color: #b2b3c3; font: 10px / 1.5 var(--mono); }
+#inspection-caption { color: #ecf7f8; font-size: 12px; }
 #inspection-run { overflow-wrap: anywhere; }
 .inspection-playback { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .inspection-playback button { min-height: 34px; }

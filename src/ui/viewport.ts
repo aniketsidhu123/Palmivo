@@ -9,6 +9,8 @@ interface MeshEntry {
 
 export const RENDER_BUDGET_FPS = 60;
 const RENDER_INTERVAL_MS = 1000 / RENDER_BUDGET_FPS;
+const VIEWPORT_INDIGO = 0x191d38;
+const SELECTION_CYAN = 0xb4f1f6;
 
 /** Renderer has no authority to commit edits. All preview transforms come from the controller. */
 export class CADViewport {
@@ -38,7 +40,7 @@ export class CADViewport {
     this.host = host;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setClearColor(0x102029, 1);
+    this.renderer.setClearColor(VIEWPORT_INDIGO, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -51,7 +53,7 @@ export class CADViewport {
     this.renderer.domElement.tabIndex = 0;
     host.append(this.renderer.domElement);
 
-    this.scene.fog = new THREE.FogExp2(0x102029, .0045);
+    this.scene.fog = new THREE.FogExp2(VIEWPORT_INDIGO, .0045);
     this.scene.add(new THREE.HemisphereLight(0xe7ece9, 0x263b4a, 2.3));
     const key = new THREE.DirectionalLight(0xfff1db, 3.4);
     key.position.set(25, 65, 50);
@@ -66,12 +68,12 @@ export class CADViewport {
     const fill = new THREE.DirectionalLight(0xbed4e2, .95);
     fill.position.set(65, -5, 40); this.scene.add(fill);
 
-    this.floor = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: 0x12232c, roughness: 1, metalness: 0 }));
+    this.floor = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: VIEWPORT_INDIGO, roughness: 1, metalness: 0 }));
     this.floor.rotation.x = -Math.PI / 2;
     this.floor.position.y = -17;
     this.floor.receiveShadow = true;
     this.scene.add(this.floor);
-    this.grid = new THREE.GridHelper(400, 80, 0x486171, 0x29434f);
+    this.grid = new THREE.GridHelper(400, 80, 0x485477, 0x303958);
     this.grid.position.y = -16.98;
     this.grid.material.transparent = true;
     this.grid.material.opacity = .45;
@@ -203,7 +205,7 @@ export class CADViewport {
   private updateOutline(selected: THREE.Object3D | null): void {
     if (!selected) { this.disposeOutline(); return; }
     if (!this.outline) {
-      this.outline = new THREE.BoxHelper(selected, 0xb8f2cf);
+      this.outline = new THREE.BoxHelper(selected, SELECTION_CYAN);
       this.diagnostics.outlineCreations++;
       this.outline.material.transparent = true;
       this.outline.material.opacity = .46;
