@@ -30,6 +30,7 @@ export class TsmRuntime {
   private ready = false;
 
   get processing(): boolean { return this.pending !== null; }
+  get loaded(): boolean { return this.ready; }
 
   load(): Promise<void> {
     if (this.ready) return Promise.resolve();
@@ -51,7 +52,7 @@ export class TsmRuntime {
     };
 
     const baseUrl = new URL(import.meta.env.BASE_URL, location.href).href;
-    this.loading = this.request({ id: ++this.requestId, type: 'load', baseUrl }, 15_000).then(reply => {
+    this.loading = this.request({ id: ++this.requestId, type: 'load', baseUrl }, 45_000).then(reply => {
       if (this.worker !== worker || reply.type !== 'ready') throw new Error('The TSM worker did not initialize.');
       this.ready = true;
     }).catch(error => {

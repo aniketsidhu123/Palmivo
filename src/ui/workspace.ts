@@ -87,7 +87,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
       <div class="header-actions"><span class="local-indicator"><span class="status-dot"></span>CAD and camera stay local</span><button id="open-project" class="quiet-button" aria-label="Open project" title="Reopen a Palmivo project JSON">${icon('open')}<span>Open project</span></button><button id="export-project" class="quiet-button" aria-label="Export project">${icon('export')}<span>Export project</span></button><input id="project-file" type="file" accept=".json,application/json" aria-label="Open Palmivo project JSON" hidden></div>
     </header>
     <main class="workspace">
-      <section class="workspace-heading"><div><div class="eyebrow">LOCAL SPATIAL WORKSPACE</div><h1>Shape with intent<span>.</span></h1><div class="example-actions"><button id="try-bushing" type="button" class="outline-button" disabled>Try the bushing</button><button id="try-camera" type="button" class="outline-button" disabled>Use my camera</button></div></div><div class="readiness" id="assets-status"><span class="readiness-icon">↻</span><div><strong>Preparing local assets</strong><span>Checking geometry & tracking runtime</span></div></div></section>
+      <section class="workspace-heading"><div><div class="eyebrow">LOCAL SPATIAL WORKSPACE</div><h1>Shape with intent<span>.</span></h1><div class="example-actions"><button id="try-bushing" type="button" class="outline-button" disabled>Try the bushing</button><button id="try-camera" type="button" class="outline-button" disabled>Use my camera</button></div></div><div class="readiness" id="assets-status"><span class="readiness-icon">↻</span><div><strong>Preparing local assets</strong><span>Starting the CAD runtime</span></div></div></section>
       <div class="workspace-grid">
         <aside class="tool-rail" aria-label="CAD tools"><div class="rail-label">TOOLS <span>01—08</span></div><div class="tool-list">${toolData.map(([tool,label,key,title]) => `${tool === 'select' || tool === 'undo' ? '<div class="tool-divider"></div>' : ''}<button class="tool-button" data-tool="${tool}" title="${title}" aria-label="${title}">${icon(tool)}<span>${label}</span><kbd>${key}</kbd></button>`).join('')}</div><div class="rail-bottom"><button data-tool="pause" class="tool-button pause-button">${icon('pause')}<span>Pause</span><kbd>␣</kbd></button><button id="reset-scene" class="reset-button">${icon('reset')}Reset workspace</button></div></aside>
         <section class="stage-shell" aria-label="3D scene">
@@ -440,8 +440,8 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     setAssetsReady(ready) {
       const status = q('#assets-status');
       status.classList.toggle('is-ready', ready);
-      status.querySelector('strong')!.textContent = ready ? 'Local assets ready' : 'Preparing local assets';
-      status.querySelector(':scope > div > span')!.textContent = ready ? 'Runtime files bundled on this device' : 'Checking geometry & tracking runtime';
+      status.querySelector('strong')!.textContent = ready ? 'Local assets ready' : 'Local assets unavailable';
+      status.querySelector(':scope > div > span')!.textContent = ready ? 'CAD ready. Camera assets load on demand.' : 'CAD runtime unavailable';
       status.querySelector('.readiness-icon')!.textContent = ready ? '✓' : '↻';
     },
     setCameraState(active) {

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { createInspectionHandler } from './inspection.mjs';
+import { runtimeCacheControl } from '../scripts/runtime-cache.mjs';
 
 const distDir = fileURLToPath(new URL('../dist/', import.meta.url));
 const mime = {
@@ -16,6 +17,7 @@ const mime = {
 
 export function createHostedServer({ env = process.env, directory = distDir, fetchImpl = fetch } = {}) {
   const root = path.resolve(directory);
+  const cacheControl = runtimeCacheControl(root);
   const inspect = createInspectionHandler({
     apiKey: env.RENDER_API_KEY, workflowSlug: env.PALMIVO_WORKFLOW_SLUG,
     sessionSecret: env.PALMIVO_INSPECT_SECRET, secureCookies: Boolean(env.RENDER) || env.NODE_ENV === 'production',
@@ -40,9 +42,10 @@ export function createHostedServer({ env = process.env, directory = distDir, fet
       if (!file.startsWith(root + path.sep)) { res.writeHead(403); res.end(); return; }
       const info = await stat(file);
       if (!info.isFile()) throw Error('Missing file');
-      const immutable = /^\/assets\/[^/]+-[a-zA-Z0-9_-]{8}\.[a-z0-9]+$/.test(url.pathname);
+      const cache = cacheControl(url);
+      if (cache === null) { res.writeHead(404, { 'Cache-Control': 'no-store' }); res.end(); return; }
       res.writeHead(200, { 'Content-Type': mime[path.extname(file)] || 'application/octet-stream',
-        'Content-Length': info.size, 'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache' });
+        'Content-Length': info.size, 'Cache-Control': cache });
       if (req.method === 'HEAD') res.end();
       else await pipeline(createReadStream(file), res);
     } catch {

@@ -89,13 +89,38 @@ export function mountTsmTools(toolbar: HTMLElement, runtimePanel: HTMLElement, o
     show(message);
   }
 
+  function release(): void {
+    stop();
+    generation++;
+    runtime.close();
+    status.removeAttribute('title');
+    show('Enable the camera to listen for one shortcut.');
+  }
+
+  async function preload(): Promise<void> {
+    if (disposed || mode !== 'rules' || runtime.loaded) return;
+    const attempt = generation;
+    show('Preparing MIT TSM shortcuts…');
+    try {
+      await runtime.load();
+      if (generation === attempt) show('MIT TSM shortcuts ready. Choose Listen for tool to arm.');
+    } catch (error) {
+      if (generation !== attempt) return;
+      show('MIT TSM could not preload. Choose Listen for tool to retry or use the gesture palette.');
+      if (error instanceof Error) status.title = error.message;
+    }
+  }
+
   async function arm(): Promise<void> {
     if (disposed || mode !== 'rules' || !options.canListen()) return;
     const attempt = ++generation;
-    setMode('loading');
-    show('Loading the bundled MIT TSM model…');
+    status.removeAttribute('title');
     try {
-      await runtime.load();
+      if (!runtime.loaded) {
+        setMode('loading');
+        show('Preparing the bundled MIT TSM model…');
+        await runtime.load();
+      }
       if (generation !== attempt) return;
       if (!options.canListen()) {
         stop('Listening ended. Return to the workspace and try again.');
@@ -181,11 +206,10 @@ export function mountTsmTools(toolbar: HTMLElement, runtimePanel: HTMLElement, o
   });
   setMode('rules');
   return {
-    button, refresh, sample, stop, mode: () => mode,
+    button, refresh, sample, stop, preload, release, mode: () => mode,
     dispose() {
       disposed = true;
-      stop();
-      runtime.close();
+      release();
       button.remove();
       hint.remove();
       panel.remove();

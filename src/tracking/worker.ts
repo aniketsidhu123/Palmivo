@@ -1,6 +1,7 @@
 import { FilesetResolver, HandLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision';
 import type { TrackedHand } from '../shared/types';
 import type { LandmarkFrame, Shoulders } from '../learned/features';
+import { fetchVerifiedRuntimeAsset, runtimeAssetUrl, type RuntimeAssets } from '../shared/runtimeAssets';
 
 interface WorkerScope { onmessage: ((event: MessageEvent) => void) | null; postMessage(message: unknown): void }
 const scope = self as unknown as WorkerScope;
@@ -14,24 +15,32 @@ let poseFailed = false;
 let latestShoulders: Shoulders | undefined;
 let lastPoseAt = -Infinity;
 let base: URL;
+let assets: RuntimeAssets;
+let vision: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>;
 
-async function initialize(baseUrl: string): Promise<void> {
+async function initialize(baseUrl: string, runtimeAssets: RuntimeAssets): Promise<void> {
   base = new URL(baseUrl);
+  assets = runtimeAssets;
   const wasm = new URL('tracking/wasm', base).href.replace(/\/$/, '');
-  const model = new URL('tracking/hand_landmarker.task', base).href;
   // 0.10.32 uses importScripts for its WASM loader; this worker is bundled as a classic IIFE.
-  const vision = await FilesetResolver.forVisionTasks(wasm);
+  const selected = await FilesetResolver.forVisionTasks(wasm);
+  vision = {
+    wasmLoaderPath: runtimeAssetUrl(base, assets, 'tracking/wasm/' + selected.wasmLoaderPath.split('/').pop()).href,
+    wasmBinaryPath: runtimeAssetUrl(base, assets, 'tracking/wasm/' + selected.wasmBinaryPath.split('/').pop()).href,
+  };
+  // MediaPipe fetches only the selected runtime. Reuse the verified model bytes for either delegate.
+  const modelAssetBuffer = await fetchVerifiedRuntimeAsset(base, assets, 'tracking/hand_landmarker.task');
   let backend: 'GPU worker' | 'CPU worker' = 'GPU worker';
   try {
     detector = await HandLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetPath: model, delegate: 'GPU' }, runningMode: 'VIDEO', numHands: 2,
+      baseOptions: { modelAssetBuffer, delegate: 'GPU' }, runningMode: 'VIDEO', numHands: 2,
       minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
     });
   } catch {
     detector?.close(); detector = null; backend = 'CPU worker';
     scope.postMessage({ type: 'status', message: 'GPU tracking unavailable; initializing CPU worker.' });
     detector = await HandLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetPath: model, delegate: 'CPU' }, runningMode: 'VIDEO', numHands: 2,
+      baseOptions: { modelAssetBuffer, delegate: 'CPU' }, runningMode: 'VIDEO', numHands: 2,
       minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
     });
   }
@@ -42,9 +51,8 @@ async function initialize(baseUrl: string): Promise<void> {
 async function preparePose() {
   poseLoading = true;
   try {
-    const vision = await FilesetResolver.forVisionTasks(new URL('tracking/wasm', base).href);
     pose = await PoseLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetPath: new URL('tracking/pose_landmarker_lite.task', base).href, delegate: 'CPU' },
+      baseOptions: { modelAssetPath: runtimeAssetUrl(base, assets, 'tracking/pose_landmarker_lite.task').href, delegate: 'CPU' },
       runningMode: 'VIDEO', numPoses: 1, outputSegmentationMasks: false,
     });
   } catch {
@@ -56,7 +64,7 @@ async function preparePose() {
 scope.onmessage = (event: MessageEvent) => {
   const data = event.data;
   if (data.type === 'init') {
-    void initialize(data.baseUrl).catch(error => scope.postMessage({ type: 'error', error: String(error), fatal: true }));
+    void initialize(data.baseUrl, data.assets).catch(error => scope.postMessage({ type: 'error', error: String(error), fatal: true }));
     return;
   }
   if (data.type === 'pose') {

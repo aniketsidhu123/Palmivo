@@ -28,9 +28,12 @@ it('uses the mirrored preview orientation, MIT crop dimensions, and BGR normaliz
   vi.stubGlobal('self', scope);
   vi.stubGlobal('location', { origin: 'http://localhost:4173' });
   vi.stubGlobal('crypto', { subtle: { digest: async () => new ArrayBuffer(32) } });
-  vi.stubGlobal('fetch', async (url: URL) => url.pathname.endsWith('/manifest.json')
-    ? new Response(JSON.stringify({ version: 1, source: 'mit-han-lab-online-tsm', modelBytes: 1, modelSha256: '0'.repeat(64) }))
-    : new Response(new Uint8Array(1)));
+  const sha256 = '0'.repeat(64);
+  const files = ['/tsm/mit-tsm-jester-streaming.onnx', '/learned/wasm/ort-wasm-simd-threaded.mjs',
+    '/learned/wasm/ort-wasm-simd-threaded.wasm'].map(path => ({ path, bytes: 1, sha256 }));
+  const fetchAsset = vi.fn(async (url: URL) => url.pathname === '/asset-manifest.json'
+    ? new Response(JSON.stringify({ version: 1, files })) : new Response(new Uint8Array(1)));
+  vi.stubGlobal('fetch', fetchAsset);
 
   const samples = new Uint8ClampedArray(224 * 224 * 4);
   samples.set([102, 153, 204, 255]);
@@ -42,6 +45,9 @@ it('uses the mirrored preview orientation, MIT crop dimensions, and BGR normaliz
   await import('./worker');
   scope.onmessage!({ data: { type: 'load', id: 1, baseUrl: 'http://localhost:4173/' } });
   await vi.waitFor(() => expect(scope.postMessage).toHaveBeenCalledWith({ id: 1, type: 'ready' }));
+  expect(fetchAsset.mock.calls.map(([url]) => url.pathname + url.search)).toEqual([
+    '/asset-manifest.json', '/tsm/mit-tsm-jester-streaming.onnx?v=' + sha256,
+  ]);
 
   const bitmap = { width: 640, height: 480, close: vi.fn() } as unknown as ImageBitmap;
   scope.onmessage!({ data: { type: 'frame', id: 2, bitmap, timestamp: 50, reset: false } });

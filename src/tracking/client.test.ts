@@ -38,6 +38,9 @@ describe('tracking client lifecycle', () => {
     getUserMedia = vi.fn().mockResolvedValue(stream);
     vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
     vi.stubGlobal('location', { origin: 'http://localhost:4173' });
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, json: async () => ({ version: 1, files: [{ path: '/tracking/worker.js', bytes: 1, sha256: 'a'.repeat(64) }] }),
+    })));
     vi.stubGlobal('Worker', FakeWorker);
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
     bitmap = { width: 640, height: 480, close: vi.fn() } as unknown as ImageBitmap;
@@ -68,6 +71,7 @@ describe('tracking client lifecycle', () => {
     await client.start(video);
     expect(client.backend).toBe('GPU worker');
     expect(FakeWorker.instances[0].url.pathname).toBe('/tracking/worker.js');
+    expect(FakeWorker.instances[0].url.searchParams.get('v')).toBe('a'.repeat(64));
     tick(callbacks, 10, 1); await settle();
     tick(callbacks, 20, 2); await settle();
     const worker = FakeWorker.instances[0];
@@ -199,7 +203,7 @@ describe('tracking client lifecycle', () => {
   it('invalidates an initialization result after stop without restarting capture', async () => {
     FakeWorker.autoReady = false;
     const client = new TrackingClient({ onFrame: frames, onStatus: status => statuses.push(status) });
-    const starting = client.start(video); await settle();
+    const starting = client.start(video); await vi.advanceTimersByTimeAsync(0);
     const worker = FakeWorker.instances[0];
     expect(worker).toBeDefined();
     client.stop(); worker.send({ type: 'ready', backend: 'GPU worker' });
