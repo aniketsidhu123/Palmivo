@@ -101,6 +101,10 @@ A local 640 × 480 webcam sample measured **29.43 camera FPS**, **28.85 tracking
 | TSM frame round trip | 41.60 ms | 45.81 ms |
 
 These timings cover model processing and frame transport. The app measures camera, render, gesture processing, and hosted inspection separately. Use **Run 23 s benchmark**, arm **Listen for tool** during the measurement window, and export the result for the camera and laptop being tested. [Benchmark evidence and procedure](docs/benchmarks/README.md)
+Gesture controls now reject ambiguous pinches between adjacent buttons and discard stale shortcut predictions after pointer-hand loss. Gesture rehearsal records labelled attempts and timings. Adaptive smoothing and thumbs-up tolerance are opt-in for comparison on your webcam.
+More shapes adds Sphere, Cone and Square Pyramid with size presets, previews and Boolean support.
+Open project accepts STL and OBJ as editable solids. Imported parts support Move, Scale, Union, Subtract and Undo. You can export the selected solid as STL or OBJ and save the complete scene as Palmivo JSON.
+
 
 ## Validate a checkout
 
