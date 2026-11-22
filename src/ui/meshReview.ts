@@ -14,6 +14,7 @@ export async function reviewMeshFile(file: File, initial: ReviewedMesh, material
       <h2 id="mesh-review-title">Import a solid</h2>
       <p>Palmivo combines the file’s geometry into one editable solid. Choose the units used by the source file.</p>
       <div class="project-review-file"><strong></strong><span role="status"></span></div>
+      <p class="project-review-note" id="mesh-colour-note"></p>
       <div class="mesh-source-units" role="group" aria-label="Source units">
         <button type="button" class="outline-button" data-unit="mm" data-gesture="mesh-mm" aria-pressed="true">Millimetres</button>
         <button type="button" class="outline-button" data-unit="cm" data-gesture="mesh-cm" aria-pressed="false">Centimetres</button>
@@ -25,6 +26,11 @@ export async function reviewMeshFile(file: File, initial: ReviewedMesh, material
       </div>
     </form>`;
   const summary = dialog.querySelector('[role="status"]')!;
+  dialog.querySelector('#mesh-colour-note')!.textContent = initial.mesh.colors
+    ? 'The preview will use the source colours.'
+    : /\.stl$/i.test(file.name)
+      ? 'This STL contains geometry only. Choose a body colour in the preview.'
+      : 'No source colours were found. Reopen the OBJ with its matching MTL, or choose a body colour in the preview.';
   const units = [...dialog.querySelectorAll<HTMLButtonElement>('[data-unit]')];
   const preview = dialog.querySelector<HTMLButtonElement>('button[value="preview"]')!;
   dialog.querySelector('strong')!.textContent = file.name;

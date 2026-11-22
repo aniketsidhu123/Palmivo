@@ -81,6 +81,16 @@ export class Controller {
     this.start({ kind: 'import', solid }, `Previewing ${solid.name}. Commit to add the imported solid or Cancel to discard it.`);
     return true;
   }
+  applyImportColor(value: string): boolean {
+    const draft = this.state.draft;
+    if (this.state.busy || this.state.paused || draft?.kind !== 'import' ||
+        this.meshes.get(draft.solid.id)?.colors || !/^#[0-9a-f]{6}$/i.test(value)) return false;
+    const color = value.toLowerCase();
+    if (draft.solid.color === color) return false;
+    this.state.draft = { ...draft, solid: { ...draft.solid, color } };
+    this.notify('Body colour updated. Choose Commit to add the solid.');
+    return true;
+  }
   applySizePreset(key: string): boolean {
     const draft = this.state.draft;
     if (this.state.busy || this.state.paused || draft?.kind !== 'create') return false;
