@@ -15,6 +15,12 @@
 .mesh-source-units,.project-folder-pages{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .mesh-source-units button,.project-folder-pages button,.project-folder-files button{min-height:38px;font-size:12px}
 .mesh-source-units button[aria-pressed=true]{background:#234447;color:#effcfd;border-color:#89c4c9}
+.import-color-panel{padding:8px 0 12px;border-top:1px solid #393a4f}
+.import-color-options{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.import-color-options button{min-height:34px;padding:5px 6px;font-size:11px;gap:5px}
+.import-color-options button[aria-pressed=true]{border-color:#a4d3d7;color:#ddf9fb}
+.import-color-options button i{width:12px;height:12px;border-radius:3px}
+.import-color-options input{width:34px;height:34px;padding:3px;border:1px solid #50546d;border-radius:4px;background:#171828;cursor:pointer}
 .project-folder{width:min(450px,calc(100vw - 32px))}
 .project-folder-files{display:grid;gap:6px;margin:10px 0}
 .project-folder-files button{display:block;text-align:left;overflow-wrap:anywhere}

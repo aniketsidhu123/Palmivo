@@ -205,6 +205,10 @@ async function runTool(tool: Tool, source: 'pointer' | 'gesture-rules' | 'keyboa
   if (selectionMode) { ui.setStatus('Point at a solid and pinch, or choose it in the scene list.'); ui.confirmAction('Select a solid in the scene or object list.', button); }
 }
 for (const [tool, button] of ui.paletteButtons) button.addEventListener('click', () => void runTool(tool));
+for (const [color, button] of ui.importColorButtons) {
+  button.addEventListener('click', () => controller.applyImportColor(color));
+}
+ui.importColorInput.addEventListener('change', () => controller.applyImportColor(ui.importColorInput.value));
 
 function selectSolid(id: string, button: HTMLButtonElement | null = null) {
   if (projectOpening || projectPicking || controller.state.busy || controller.state.paused) return;
@@ -323,6 +327,7 @@ function buttonId(button: HTMLButtonElement): string | null {
   if (button === ui.testGestureButton) return 'test:click';
   if (button === ui.stlExportButton) return 'export:stl';
   if (button === ui.objExportButton) return 'export:obj';
+  if (button.dataset.importColor) return 'import-color:' + button.dataset.importColor;
   if (button.id === 'more-shapes' || button.id === 'back-shapes') return button.id;
   if (button.dataset.sizePreset) return `preset:${button.dataset.sizePreset}`;
   const tool = [...ui.paletteButtons].find(([, element]) => element === button)?.[0];
@@ -337,6 +342,7 @@ function resolveButton(id: string | null): HTMLButtonElement | null {
   if (id === 'test:click') return ui.testGestureButton;
   if (id === 'export:stl') return ui.stlExportButton;
   if (id === 'export:obj') return ui.objExportButton;
+  if (id.startsWith('import-color:')) return ui.importColorButtons.get(id.slice('import-color:'.length)) ?? null;
   if (id === 'more-shapes' || id === 'back-shapes') return document.querySelector<HTMLButtonElement>('#' + id);
   if (id === 'tsm:listen') return tsm.button;
   if (id === 'learned:listen') return learned.listenButton;
@@ -425,7 +431,7 @@ function processGesture(output: GestureOutput) {
     if (button === ui.testGestureButton) testClick('gesture');
     else if (button === ui.openProjectButton) void gestureOpenProject();
     else if (button === ui.resetButton) resetWorkspace('gesture');
-    else if (button === ui.exportButton || activation.activate.startsWith('dialog:')) button.click();
+    else if (button === ui.exportButton || button.dataset.importColor || activation.activate.startsWith('dialog:')) button.click();
     else if (button === tsm.button || button === learned.listenButton || button === learned.stopButton || activation.activate.startsWith('inspect:') ||
       activation.activate === 'more-shapes' || activation.activate === 'back-shapes') button.click();
     else if (button.dataset.transformStep) adjustPreview(button.dataset.transformStep, 'gesture-rules');
@@ -797,7 +803,9 @@ async function openMesh(file: File, materials: readonly File[]) {
     selectionMode = false;
     ui.setSelectedTool(null);
     viewport.fit();
-    ui.confirmAction('Mesh preview ready. Choose Commit to add it.');
+    ui.confirmAction(mesh.mesh.colors
+      ? 'Source colours loaded. Choose Commit to add the solid.'
+      : 'Choose a body colour in the preview, then Commit.');
   } catch (error) {
     ui.setStatus(`Could not import mesh. ${error instanceof Error ? error.message : 'Invalid mesh.'}`);
   } finally {

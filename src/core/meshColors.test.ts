@@ -54,6 +54,7 @@ describe('preserving solid and face colours', () => {
     const app = new Controller(geometry);
     expect(app.beginImport('part.obj', { asset, mesh, dimensions: [10,10,10] })).toBe(true);
     expect(app.state.draft?.kind).toBe('import');
+    expect(app.applyImportColor('#33cc00')).toBe(false);
     expect(await app.commit()).toBe(true);
     const saved = parseProjectFile(JSON.stringify(app.exportDocument()));
     expect(saved.assets?.[0].colors).toBe(asset.colors);
@@ -84,6 +85,32 @@ describe('preserving solid and face colours', () => {
     const exported = parseMeshBytes(encode(exportSolidOBJ(solid, mesh).data), 'obj', 'mm');
     expect(colorsIn(stl.colors!)).toEqual(new Set(['19,169,239']));
     expect(colorsIn(exported.colors!)).toEqual(colorsIn(stl.colors!));
+  });
+
+  it('keeps a chosen body colour on a geometry-only import through Commit, JSON and STL', async () => {
+    const parsed = parseMeshBytes(encode(obj), 'obj', 'mm');
+    const asset = await makeMeshAsset(parsed.positions, parsed.indices);
+    const recipe = { kind: 'mesh' as const, assetId: asset.id };
+    const geometry: GeometryAdapter = { build: async (recipe, assets) => buildMesh(kernel, recipe, assets) };
+    const mesh = buildMesh(kernel, recipe, [asset]);
+    const app = new Controller(geometry);
+    const imported = { asset, mesh, dimensions: [10,10,10] as [number, number, number] };
+    expect(app.beginImport('bare.stl', imported)).toBe(true);
+    expect(app.applyImportColor('red')).toBe(false);
+    expect(app.applyImportColor('#F4B928')).toBe(true);
+    expect(app.state.draft?.kind === 'import' && app.state.draft.solid.color).toBe('#f4b928');
+    app.cancel();
+    expect(app.state.scene.solids).toHaveLength(0);
+    expect(app.beginImport('bare.stl', imported)).toBe(true);
+    expect(app.applyImportColor('#F4B928')).toBe(true);
+    expect(await app.commit()).toBe(true);
+    expect(app.applyImportColor('#001122')).toBe(false);
+    const reopened = new Controller(geometry);
+    expect(await reopened.restore(parseProjectFile(JSON.stringify(app.exportDocument())))).toBe(true);
+    const solid = reopened.state.scene.solids[0];
+    expect(solid.color).toBe('#f4b928');
+    expect(colorsIn(parseMeshBytes(exportSolidSTL(solid, reopened.meshes.get(solid.id)!).data, 'stl', 'mm').colors!))
+      .toEqual(new Set(['244,185,40']));
   });
 
   it('gives newly exposed Boolean faces a colour while preserving coloured source faces', async () => {

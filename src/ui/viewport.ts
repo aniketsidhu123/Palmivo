@@ -147,7 +147,8 @@ export class CADViewport {
       const scale = state.draft?.kind === 'scale' && state.draft.targetId === solid.id ? state.draft.uniformScale : solid.scale;
       mesh.position.set(...move);
       mesh.scale.setScalar(scale);
-      const isPreview = (state.draft?.kind === 'create' || state.draft?.kind === 'import') && state.draft.solid.id === solid.id;
+      const isImportPreview = state.draft?.kind === 'import' && state.draft.solid.id === solid.id;
+      const isPreview = isImportPreview || state.draft?.kind === 'create' && state.draft.solid.id === solid.id;
       const isCutter = state.draft?.kind === 'subtract' && state.draft.cutterId === solid.id;
       const isJoinOperand = state.draft?.kind === 'union' && state.draft.otherId === solid.id;
       const hasColors = mesh.geometry.hasAttribute('color');
@@ -158,9 +159,9 @@ export class CADViewport {
       const materialFlagsChanged = mesh.material.transparent !== transparent || mesh.material.depthWrite !== depthWrite || mesh.material.vertexColors !== colorVertices;
       mesh.material.vertexColors = colorVertices;
       mesh.material.transparent = transparent;
-      mesh.material.opacity = isCutter ? .43 : isJoinOperand ? .61 : isPreview ? (hasColors ? .94 : .76) : 1;
+      mesh.material.opacity = isCutter ? .43 : isJoinOperand ? .61 : isImportPreview ? .94 : isPreview ? .76 : 1;
       mesh.material.depthWrite = depthWrite;
-      mesh.material.emissive.set(isPreview && !hasColors ? '#142c2c' : '#000000');
+      mesh.material.emissive.set(isPreview && !isImportPreview ? '#142c2c' : '#000000');
       if (materialFlagsChanged) mesh.material.needsUpdate = true;
       mesh.updateMatrixWorld(true);
     }

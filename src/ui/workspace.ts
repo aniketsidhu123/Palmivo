@@ -2,6 +2,7 @@ import type { ControllerState, Draft, GeometryMesh, Tool } from '../shared/types
 import { SIZE_PRESETS } from '../core/presets';
 import { TRANSFORM_STEPS } from '../core/transformSteps';
 import { measureSolid, type SolidMeasurements } from '../core/solidMeasurements';
+import { DEFAULT_IMPORT_COLOR } from '../core/meshColors';
 import { CONFIRMATION_DURATION_MS, manipulationInstruction, resolveInstruction, type ManipulationFeedback } from './feedback';
 import './style.css';
 import './responsive.css';
@@ -40,6 +41,8 @@ export interface WorkspaceUI {
   paletteButtons: Map<Tool, HTMLButtonElement>;
   sizePresetButtons: Map<string, HTMLButtonElement>;
   transformStepButtons: Map<string, HTMLButtonElement>;
+  importColorButtons: Map<string, HTMLButtonElement>;
+  importColorInput: HTMLInputElement;
   viewportHost: HTMLElement;
   video: HTMLVideoElement;
   handCanvas: HTMLCanvasElement;
@@ -209,6 +212,31 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     presetsPanel.append(group);
   }
   q('.selected-panel').after(presetsPanel);
+  const importColorPanel = document.createElement('section');
+  importColorPanel.className = 'import-color-panel';
+  importColorPanel.setAttribute('aria-label', 'Choose the body colour');
+  importColorPanel.hidden = true;
+  importColorPanel.innerHTML = `<div class="section-heading"><h3>Body colour</h3></div>
+    <div class="import-color-options"><input type="color" value="${DEFAULT_IMPORT_COLOR}"
+      aria-label="Custom body colour" title="Custom body colour"></div>`;
+  const importColorOptions = importColorPanel.querySelector('.import-color-options')!;
+  const importColorInput = importColorPanel.querySelector<HTMLInputElement>('input')!;
+  const importColorButtons = new Map<string, HTMLButtonElement>();
+  for (const [label, color] of [['Teal', DEFAULT_IMPORT_COLOR], ['Yellow', '#f4b928'], ['Silver', '#d6dae5']]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'outline-button';
+    button.dataset.importColor = color;
+    button.setAttribute('aria-label', label + ' body colour');
+    button.setAttribute('aria-pressed', 'false');
+    const sample = document.createElement('i');
+    sample.style.backgroundColor = color;
+    sample.setAttribute('aria-hidden', 'true');
+    button.append(sample, label);
+    importColorOptions.insertBefore(button, importColorInput);
+    importColorButtons.set(color, button);
+  }
+  presetsPanel.after(importColorPanel);
   const reviewDialog = q<HTMLDialogElement>('#project-review');
   let finishReview: ((approved: boolean) => void) | null = null;
   reviewDialog.addEventListener('close', () => { const finish = finishReview; finishReview = null; finish?.(reviewDialog.returnValue === 'replace'); });
@@ -246,7 +274,9 @@ export function createUI(root: HTMLElement): WorkspaceUI {
     if (!state) return 'Choose a primitive to begin.';
     if (tuningActivation.value === 'one-hand' && (state.draft?.kind === 'scale' || state.draft?.kind === 'move')) return 'Hold over a precise adjustment. Move off buttons to rearm. Commit applies; Cancel restores.';
     if (state.draft?.kind === 'create') return 'Choose exact sizes below, then Commit to create your solid. Cancel discards the preview.';
-    if (state.draft?.kind === 'import') return 'Check the imported part in the viewport. Commit adds it to the scene.';
+    if (state.draft?.kind === 'import') return currentMeshes?.get(state.draft.solid.id)?.colors
+      ? 'Check the imported part in the viewport. Commit adds it to the scene.'
+      : 'Choose a body colour and check the preview. Commit adds the solid to the scene.';
     if (state.draft?.kind === 'subtract') {
       const draft = state.draft;
       const target = state.scene.solids.find(s => s.id === draft.targetId)?.name ?? draft.targetId;
@@ -331,6 +361,19 @@ export function createUI(root: HTMLElement): WorkspaceUI {
       button.title = state.busy ? 'Wait for geometry execution to finish' : state.draft ? 'Commit or Cancel the preview before exporting' : state.paused ? 'Resume editing before exporting' : !selectedMeasurement ? 'Select a committed solid to export' : 'Export the selected committed surface with coordinates in millimetres.';
     }
     const create = state.draft?.kind === 'create' ? state.draft : null;
+    const importDraft = state.draft?.kind === 'import' ? state.draft : null;
+    const canColorImport = !!importDraft && !currentMeshes?.get(importDraft.solid.id)?.colors;
+    importColorPanel.hidden = !canColorImport;
+    if (canColorImport && importDraft) {
+      const color = importDraft.solid.color;
+      const disabled = state.busy || state.paused;
+      if (importColorInput.value !== color) importColorInput.value = color;
+      importColorInput.disabled = disabled;
+      for (const [value, button] of importColorButtons) {
+        button.disabled = disabled;
+        button.setAttribute('aria-pressed', String(value === color));
+      }
+    }
     presetsPanel.hidden = !create;
     q('.inspector').classList.toggle('is-create-draft', !!create);
     for (const group of presetsPanel.querySelectorAll<HTMLElement>('.preset-group')) group.hidden = !create || group.dataset.primitive?.toLowerCase() !== create.solid.recipe.kind;
@@ -350,7 +393,7 @@ export function createUI(root: HTMLElement): WorkspaceUI {
   };
 
   return {
-    paletteButtons, sizePresetButtons, transformStepButtons,
+    paletteButtons, sizePresetButtons, transformStepButtons, importColorButtons, importColorInput,
     viewportHost: q('#viewport'), video,
     handCanvas: q<HTMLCanvasElement>('#hand-overlay'), cameraButton,
     exampleCameraButton: q<HTMLButtonElement>('#try-camera'),
